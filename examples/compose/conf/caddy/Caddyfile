@@ -1,0 +1,21 @@
+
+{$DOMAIN} *.{$DOMAIN} {
+
+  handle /playback/presentation/2.3/* {
+    reverse_proxy {$BBBHOSTS} {
+      header_up Host {upstream_hostport}
+    }
+  }
+
+  handle /presentation/* {
+    root * /usr/share/bbblb/public/
+    file_server
+  }
+
+  handle_path /playback/* {
+    root * /usr/share/bbblb/public/
+    file_server
+  }
+
+  reverse_proxy bbblb:8000
+}

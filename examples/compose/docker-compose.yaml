@@ -1,0 +1,47 @@
+name: bbblb
+
+services:
+  bbblb:
+    #image: ...
+    build:
+      context: ../../
+      dockerfile: docker/Dockerfile
+      target: app
+    restart: unless-stopped
+    environment:
+      - BBBLB_DB=postgresql+asyncpg://bbblb:bbblb@postgres/bbblb
+      - BBBLB_RECORDING_PATH=/data/recordings
+    volumes:
+      - ./data/recordings:/data/recordings
+    depends_on:
+      - postgres
+
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    volumes:
+      - ./conf/caddy/:/etc/caddy:ro
+      - ./data/caddy.data:/data
+      - ./data/caddy.config:/config
+      - ./data/recordings/:/usr/share/bbblb
+    environment:
+      # Public domain for this loadbalancer
+      - DOMAIN=localhost
+      # A space-separated list of HTTP or HTTPS domains that host a copy of the
+      # /playback/presentation/2.3/ player code (e.g. any standard BBB server).
+      - BBBHOSTS=https://join.meet.gwdg.de
+    ports:
+      - 80:80
+      - 443:443
+    depends_on:
+      - bbblb
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      - POSTGRES_DB=bbblb
+      - POSTGRES_USER=bbblb
+      - POSTGRES_PASSWORD=bbblb
+    volumes:
+      - ./data/postgres17:/var/lib/postgresql/data
+    restart: unless-stopped

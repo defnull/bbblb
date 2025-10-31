@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.*cache
+
+# Virtual environments
+.venv
+
+# Test data directories
+testhook.py
+testdata
+.var
+examples/compose/data
