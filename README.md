@@ -1,6 +1,6 @@
 # BBBLB: Yet another Load Balancer for BigBlueButton
 
-BBBLB (BigBlueButton Load Balancer) is yet another load balancer for BigBlueButton. It aims to provide secure, scalable and robust solution large BigBlueButton installations and allow organizations to host their own BigBlueButton cluster or offer such services to others.
+BBBLB (BigBlueButton Load Balancer) is yet another *smart* load balancer for [BigBlueButton](https://bigbluebutton.org/). It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
 
 ## Current Status
 
