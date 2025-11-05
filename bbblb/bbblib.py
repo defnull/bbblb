@@ -14,9 +14,22 @@ XML = lxml.builder.ElementMaker()
 ETree: typing.TypeAlias = lxml.etree._Element
 
 LOG = logging.getLogger(__name__)
-HTTP = aiohttp.ClientSession()
 MAX_URL_SIZE = 1024 * 2
 TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
+
+CONNPOOL: aiohttp.TCPConnector | None = None
+
+
+async def get_pool():
+    global CONNPOOL
+    if not CONNPOOL or CONNPOOL.closed:
+        CONNPOOL = aiohttp.TCPConnector(limit_per_host=10)
+    return CONNPOOL
+
+
+async def close_pool():
+    if CONNPOOL and not CONNPOOL.closed:
+        await CONNPOOL.close()
 
 
 class BBBResponse:
@@ -68,6 +81,16 @@ class BBBClient:
     def __init__(self, base_url: str, secret: str):
         self.base_url = base_url
         self.secret = secret
+        self.session = None
+
+    async def get_session(self):
+        # Hint: Closing a session does nothing if it does not own the connector,
+        # so we do not need to close it.
+        if not self.session or self.session.closed:
+            self.session = aiohttp.ClientSession(
+                connector=await get_pool(), connector_owner=False
+            )
+        return self.session
 
     def encode_uri(self, endpoint: str, query: dict[str, str]):
         return urljoin(self.base_url, endpoint) + "?" + self.sign_query(endpoint, query)
@@ -117,7 +140,8 @@ class BBBClient:
 
         LOG.debug(f"Request: {url}")
         try:
-            async with HTTP.request(
+            session = await self.get_session()
+            async with session.request(
                 method, url, data=body, headers=headers, timeout=TIMEOUT
             ) as response:
                 if response.status not in (200,):

@@ -1,7 +1,12 @@
+import asyncio
 import contextvars
 import enum
 import functools
 import logging
+import os
+import random
+import secrets
+import socket
 import typing
 import uuid
 from uuid import UUID
@@ -21,6 +26,9 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     UniqueConstraint,
+    delete,
+    insert,
+    update,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -31,7 +39,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
-from sqlalchemy.exc import NoResultFound, IntegrityError  # noqa: F401
+from sqlalchemy.exc import NoResultFound, IntegrityError, OperationalError  # noqa: F401
 
 import bbblb.recordings
 
@@ -40,28 +48,38 @@ LOG = logging.getLogger(__name__)
 P = typing.ParamSpec("P")
 R = typing.TypeVar("R")
 
+PROCESS_IDENTITY = f"{socket.gethostname()}-{os.getpid()}-{secrets.token_hex(4)}"
+
 
 def utcnow():
     return datetime.datetime.now(tz=datetime.timezone.utc)
 
 
 async_engine: AsyncEngine
-AsyncSessionSession: async_sessionmaker[AsyncSession]
+AsyncSessionMaker: async_sessionmaker[AsyncSession]
 ScopedSession: async_scoped_session[AsyncSession]
 
 
 async def init_engine(db: str, echo=False):
-    global async_engine, AsyncSessionSession, ScopedSession
+    global async_engine, AsyncSessionMaker, ScopedSession
     async_engine = create_async_engine(db, echo=echo)
-    AsyncSessionSession = async_sessionmaker(async_engine, expire_on_commit=False)
+    AsyncSessionMaker = async_sessionmaker(async_engine, expire_on_commit=False)
 
     ScopedSession = async_scoped_session(
-        AsyncSessionSession,
+        AsyncSessionMaker,
         scopefunc=get_db_scope_id,
     )
 
     async with async_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # Creating tables is not transactional in some databases, so we just try
+        # our luck and if that fails, we sleep a couple of ms and try again.
+        try:
+            await conn.run_sync(Base.metadata.create_all)
+        except OperationalError:
+            sleep = random.randint(100, 200)
+            LOG.warning(f"Failed to create tables. Trying again in {sleep}ms")
+            await asyncio.sleep(sleep)
+            await conn.run_sync(Base.metadata.create_all)
 
 
 async def dispose_engine():
@@ -269,6 +287,70 @@ class Base(ScopedORMMixin, AsyncAttrs, DeclarativeBase):
 
     def __str__(self):
         return f"{self.__class__.__name__}({getattr(self, 'id', None)})"
+
+
+class Lock(Base):
+    __tablename__ = "locks"
+    name: Mapped[str] = mapped_column(primary_key=True)
+    owner: Mapped[str] = mapped_column(nullable=False)
+    ts: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), insert_default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    @classmethod
+    async def try_acquire(cls, name, force_release: datetime.timedelta | None = None):
+        """Try to acquire a named inter-process lock and force-release any
+        existing locks if it they are older than the force_release time limit.
+
+        This is not re-entrant. Acquiring the same lock twice will fail.
+        """
+        async with async_engine.begin() as conn:
+            if force_release:
+                expire = utcnow() - force_release
+                await conn.execute(
+                    delete(cls).where(Lock.name == name, Lock.ts < expire)
+                )
+            try:
+                await conn.execute(
+                    insert(cls).values(name=name, owner=PROCESS_IDENTITY)
+                )
+                await conn.commit()
+                LOG.debug(f"Lock {name!r} acquired by {PROCESS_IDENTITY}")
+                return True
+            except IntegrityError:
+                await conn.rollback()
+                return False
+
+    @classmethod
+    async def check(cls, name):
+        """Update the lifetime of an already held lock, return true if such a
+        lock exists, false otherwise."""
+        async with async_engine.begin() as conn:
+            result = await conn.execute(
+                update(cls)
+                .values(ts=utcnow())
+                .where(Lock.name == name, Lock.owner == PROCESS_IDENTITY)
+            )
+            if result.rowcount > 0:
+                LOG.debug(f"Lock {name!r} updated by {PROCESS_IDENTITY}")
+                return True
+            return False
+
+    @classmethod
+    async def try_release(cls, name):
+        """Release a named inter-process lock if it's owned by the current
+        process. Return true if such a lock existed, false otherwise."""
+        async with async_engine.begin() as conn:
+            result = await conn.execute(
+                delete(cls).where(Lock.name == name, Lock.owner == PROCESS_IDENTITY)
+            )
+            if result.rowcount > 0:
+                LOG.debug(f"Lock {name!r} released by {PROCESS_IDENTITY}")
+                return True
+            return False
+
+    def __str__(self):
+        return f"Lock({self.name}')"
 
 
 class Tenant(Base):

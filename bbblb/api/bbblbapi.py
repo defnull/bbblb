@@ -28,12 +28,13 @@ def api(route: str, methods=["GET", "POST"], name: str | None = None):
         async def wrapper(request, *args, **kwargs):
             try:
                 out = await func(request)
+            except ApiError as exc:
+                out = exc.to_response()
             except BaseException:
                 LOG.exception("Unhandled exception")
-                out = JSONResponse(
-                    {"error": "Unhandled exception", "message": "You found a bug!"},
-                    status_code=500,
-                )
+                out = ApiError(
+                    500, "Unhandled exception", "You found a bug!"
+                ).to_response()
             return out
 
         path = "/" + route
@@ -41,6 +42,75 @@ def api(route: str, methods=["GET", "POST"], name: str | None = None):
         return wrapper
 
     return decorator
+
+
+class ApiError(RuntimeError):
+    def __init__(self, status: int, error: str, message: str, **args):
+        self.status = status
+        self.ctx = {"error": error, "message": message, **args}
+        super().__init__(f"{error} ({status}) {message} {args or ''}")
+
+    def to_response(self):
+        return JSONResponse(
+            self.ctx,
+            status_code=self.status,
+        )
+
+
+class AuthContext:
+    def __init__(self, claims):
+        self.claims = claims
+
+    @functools.cached_property
+    def scopes(self):
+        return set(self.claims.get("scope", "").split())
+
+    @property
+    def sub(self):
+        return self.claims["sub"]
+
+    def has_scope(self, *scopes):
+        return any(scope in self.scopes for scope in scopes)
+
+    def ensure_scope(self, *scopes):
+        """Ensure that the token has one of the given scopes. Return the matching scope."""
+        if "admin" in self.scopes:
+            return "admin"
+        for scope in scopes:
+            if scope in self.scopes:
+                return scope
+            if ":" in scope and scope.split(":", 1)[0] in self.scopes:
+                return scope
+        raise ApiError(401, "Access denied", "This API is protected")
+
+    @classmethod
+    async def from_request(cls, request: Request) -> "AuthContext":
+        auth = request.headers.get("Authorization")
+        if not auth:
+            raise ApiError(403, "Authentication required", "This API is protected")
+
+        try:
+            scheme, credentials = auth.split()
+            if scheme.lower() != "bearer":
+                raise ApiError(403, "Authentication required", "This API is protected")
+
+            header = jwt.get_unverified_header(credentials)
+            kid = header.get("kid")
+            if kid:
+                # TODO Cache this!
+                server = await model.Server.find(domain=kid)
+                if not server:
+                    raise ApiError(401, "Access denied", "This API is protected")
+                payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
+                payload["scope"] = "bbb"
+                payload["sub"] = server.domain
+                return AuthContext(payload)
+            else:
+                payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
+                return AuthContext(payload)
+
+        except BaseException:
+            raise ApiError(401, "Access denied", "This API is protected")
 
 
 ##
@@ -162,61 +232,10 @@ async def handle_callback_proxy(request: Request):
 ##
 
 
-class AuthContext:
-    def __init__(self, claims):
-        self.claims = claims
-
-    @functools.cached_property
-    def scopes(self):
-        return set(self.claims.get("scope", "").split())
-
-    @property
-    def sub(self):
-        return self.claims["sub"]
-
-    def has_scope(self, *scopes):
-        return any(scope in self.scopes for scope in scopes)
-
-    @classmethod
-    async def from_request(cls, request: Request):
-        auth = request.headers.get("Authorization")
-        if not auth:
-            return
-
-        try:
-            scheme, credentials = auth.split()
-            if scheme.lower() != "bearer":
-                return
-
-            header = jwt.get_unverified_header(credentials)
-            kid = header.get("kid")
-            if kid:
-                # TODO Cache this!
-                server = await model.Server.find(domain=kid)
-                if not server:
-                    return
-                payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
-                payload["scope"] = "bbb"
-                payload["sub"] = server.domain
-                return AuthContext(payload)
-            else:
-                payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
-                return AuthContext(payload)
-
-        except BaseException:
-            LOG.exception("Request denied")
-            return
-
-
 @api("v1/recording/upload", methods=["POST"], name="bbblb:upload")
 async def handle_recording_upload(request: Request):
     auth = await AuthContext.from_request(request)
-
-    if not auth or not auth.has_scope("rec", "rec:upload", "bbb"):
-        return JSONResponse(
-            {"error": "Access denied", "message": "This API is protected"},
-            status_code=401,
-        )
+    auth.ensure_scope("rec:upload", "bbb")
 
     ctype = request.headers["content-type"]
     if ctype != "application/x-tar":

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import time
 
 from bbblb import model
@@ -16,6 +17,10 @@ class Poller:
     def __init__(self):
         self.should_stop = False
         self.task = None
+        self.lockname = "poll"
+        self.lock_timeout = datetime.timedelta(seconds=config.POLL_INTERVAL * 10)
+        self.locked = False
+        self.shutdown_complete = asyncio.Event()
 
     async def __aenter__(self):
         self.should_stop = False
@@ -24,24 +29,61 @@ class Poller:
         return self
 
     async def __aexit__(self, *a):
+        await self.close()
+
+    async def close(self):
         self.should_stop = True
         if self.task:
             self.task.cancel()
 
+        # We cannot wait for a cancelled task, but we want to wait until all
+        # cleanup/finally activities have completed.
+        await self.shutdown_complete.wait()
+
     async def poller_loop(self):
-        LOG.info("Server poller loop started")
+        try:
+            while not self.should_stop:
+                self.locked = await model.Lock.try_acquire(
+                    self.lockname, self.lock_timeout
+                )
+                if not self.locked:
+                    # Another process holds the lock, pause for a while and then try again
+                    await asyncio.sleep((self.lock_timeout / 2).total_seconds())
+                    continue
 
-        while not self.should_stop:
-            await asyncio.sleep(config.POLL_INTERVAL)
+                try:
+                    LOG.info("Starting poller loop ...")
+                    while not self.should_stop:
+                        ts = time.time()
 
-            try:
-                async with model.scope() as session:
-                    result = await session.execute(model.Server.select())
-                    servers = result.scalars()
-                tasks = [self.poll_one(server.id) for server in servers]
-                await asyncio.gather(*tasks)
-            except BaseException:
-                LOG.exception("Unhandled polling error")
+                        if not await model.Lock.check(self.lockname):
+                            LOG.warning("We lost our {lockname!r} lock!?")
+                            break
+
+                        async with model.scope() as session:
+                            result = await session.execute(model.Server.select())
+                            servers = result.scalars()
+                        tasks = [self.poll_one(server.id) for server in servers]
+                        await asyncio.gather(*tasks)
+
+                        dt = time.time() - ts
+                        sleep = config.POLL_INTERVAL - dt
+                        if sleep <= 0.0:
+                            LOG.warning(
+                                "Poll took longer than POLL_INTERVAL ({dt:.1}s total)"
+                            )
+                            await asyncio.sleep(config.POLL_INTERVAL)
+                        else:
+                            await asyncio.sleep(max(1.0, sleep))
+                except asyncio.CancelledError:
+                    LOG.info("Poller cancelled")
+                    self.should_stop = True
+                except BaseException:
+                    LOG.exception("Unhandled polling error")
+        finally:
+            if self.locked:
+                await model.Lock.try_release(self.lockname)
+            self.shutdown_complete.set()
 
     @model.transactional(isolated=True, autocommit=True)
     async def poll_one(self, server_id):

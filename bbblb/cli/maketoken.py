@@ -5,19 +5,23 @@ import time
 import click
 import jwt
 
-@click.group(name="bbblb")
-@click.option('--config', '-c', metavar="FILE", envvar="BBBLB_CONFIG", help='Load config from file')
-def main(config):
-    if config:
-        cfg.load_file(config, remove_prefix="BBBLB_")
-    cfg.populate(verify=False)
+from . import main
+
 
 @main.command()
-@click.option('--tenant', '-t', help='Limit token to specific tenant.')
-@click.option('--expire', '-e', metavar="SECONDS", default=-1, help='Number of seconds after which this token should expire.')
-@click.option('--verbose', '-v', help='Print the clear-text token to stdout.', is_flag=True)
-@click.argument('subject')
-@click.argument('scope', nargs=-1)
+@click.option("--tenant", "-t", help="Limit token to specific tenant.")
+@click.option(
+    "--expire",
+    "-e",
+    metavar="SECONDS",
+    default=-1,
+    help="Number of seconds after which this token should expire.",
+)
+@click.option(
+    "--verbose", "-v", help="Print the clear-text token to stdout.", is_flag=True
+)
+@click.argument("subject")
+@click.argument("scope", nargs=-1)
 def maketoken(subject, expire, tenant, scope, verbose):
     """Generate an API token
 

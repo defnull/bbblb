@@ -224,7 +224,7 @@ class BBBLBConfig(BaseConfig):
         LOADFACTOR_SIZE + LOADFACTOR_VOICE + LOADFACTOR_VIDEO
     )
 
-    API_BRANDING: str = f"Served by BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
+    API_BRANDING: str = "Served by BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
 
     def populate(self, verify=True):
         if self.get_missing():
