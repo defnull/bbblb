@@ -5,8 +5,6 @@ import shlex
 import typing
 import types
 
-from bbblb import VERSION
-
 LOG = logging.getLogger(__name__)
 
 
@@ -133,7 +131,9 @@ class BaseConfig:
     def __getattr__(self, name: str):
         if name.startswith("_"):
             return super().__getattribute__(name)
-        raise ConfigError(name)
+        if name in self._options:
+            raise ConfigError(f"Missing config parameter: {name}")
+        raise AttributeError(name)
 
 
 class BBBLBConfig(BaseConfig):
@@ -224,14 +224,15 @@ class BBBLBConfig(BaseConfig):
         LOADFACTOR_SIZE + LOADFACTOR_VOICE + LOADFACTOR_VIDEO
     )
 
-    API_BRANDING: str = f"Served by BBBLB-{VERSION[0]} (AGPL-3, https://github.com/"
+    API_BRANDING: str = f"Served by BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
 
-    def populate(self):
+    def populate(self, verify=True):
         if self.get_missing():
             config.load_env("BBBLB_", strict=True)
             if config.CONFIG:
                 config.load_file(config.CONFIG, remove_prefix="BBBLB_", strict=True)
-        self.ensure_complete()
+        if verify:
+            self.ensure_complete()
 
 
 config = BBBLBConfig()
