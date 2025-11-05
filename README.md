@@ -52,6 +52,12 @@ See (API Docs)[./docs/API.md] (TODO)
 
 TODO
 
+# Contributing
+
+By contributing to this project, you confirm that you understand and agree to
+both the *Developer Certificate of Origin* and the *Contributor License
+Agreement*, which can be found in the `CONTRIBUTING.md` file. 
+
 # License
 
     BBBLB - BigBlueButton Load Balancer
