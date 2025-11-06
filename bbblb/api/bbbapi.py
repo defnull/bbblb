@@ -13,6 +13,7 @@ import sqlalchemy.orm
 from starlette.requests import Request
 from starlette.routing import Route
 from starlette.responses import Response, RedirectResponse
+import bbblb
 from bbblb import utils
 from bbblb import bbblib
 from bbblb.utils import checked_cast
@@ -166,7 +167,7 @@ async def handle_index(request: Request):
     return XML.response(
         XML.returncode("SUCCESS"),
         XML.version("2.0"),
-        XML.info(config.API_BRANDING),
+        XML.info(f"Served by {bbblb.BRANDING}"),
     )
 
 
@@ -552,10 +553,10 @@ async def handle_get_recordings(request: Request):
             stmt = stmt.where(model.Recording.meta[key].as_text() == value)
     if 0 < offset < 10000:
         stmt = stmt.offset(offset)
-    if 0 < limit < config.API_MAXLIMIT:
+    if 0 < limit < config.MAX_ITEMS:
         stmt = stmt.limit(limit)
     else:
-        stmt = stmt.limit(config.API_MAXLIMIT)
+        stmt = stmt.limit(config.MAX_ITEMS)
 
     result_xml: ETree = XML.response(XML.returncode("SUCCESS"), XML.recordings())
     all_recordings = result_xml.find("recordings")

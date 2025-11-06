@@ -12,6 +12,8 @@ ch = logging.StreamHandler()
 ch.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
 ROOT_LOGGER.addHandler(ch)
 
+BRANDING = "BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
+
 
 @config.watch
 def watch_debug_level(name, old, new):

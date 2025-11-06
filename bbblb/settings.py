@@ -137,11 +137,8 @@ class BaseConfig:
 
 
 class BBBLBConfig(BaseConfig):
-    #: Enable debug logs
-    DEBUG: bool
-
     #: An sqlalchemy-style database URL. MUST be an async-capable engine
-    #: Supportet are sqlite+aiosqlite:// and postgresql+asyncpg:// schemes
+    #: Supportet are sqlite+aiosqlite:// and postgresql+asyncpg:// schemes.
     DB_URI: str
 
     #: Primary domain for this service. This will be added as bbblb-origin
@@ -149,10 +146,9 @@ class BBBLBConfig(BaseConfig):
     #: to get back at bbblb from the BBB nodes.
     DOMAIN: str
 
-    #: Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
-    #: can be used to refer to the global DOMAIN config, or the realm of the
-    #: current tenant.
-    PLAYBACK_DOMAIN: str = "{DOMAIN}"
+    #: Secret used to sign and verify API credentials and protected callbacks.
+    #: This is NOT your BBB API secret.
+    SECRET: str
 
     #: For each BBB API request, the value of this header is matched against the
     #: tenant realms to find the correct tenant. This defaults to the `Host`
@@ -160,71 +156,68 @@ class BBBLBConfig(BaseConfig):
     #: reach BBBLB.
     TENANT_HEADER: str = "Host"
 
-    #: Maximum number of meetings or records to return from APIs that potentially
-    #: return a lot of stuff.
-    API_MAXLIMIT: int = 1000
-
-    #: Secret used to sign and verify API credentials and protected callbacks.
-    #: This is NOT your BBB API secret.
-    SECRET: str
-
-    #: How often to retry webhooks if the target does not respond.
-    WEBHOOK_RETRY: int = 3
-
-    ##
-    ### Recording imports
-    ##
-
-    #: Root path for all the directories used by the recording importer. Must be
-    #: fully write-able for bbblb and parts of it also read-able by your foront-end
-    #: HTTP server. See docs/recording.md for details.
-    RECORDING_PATH: pathlib.Path
-    #: Maximum number of import tasks to perform at the same timer. It is usually
-    #: not a good idea to increase this too much.
-    RECORDING_THREADS: int = 2
-
     #: If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
     #: tenants. API clients will still see the unmodified meeting ID, but the scoped
     #: ID may end up in recording metadata and logs.
     SCOPED_MEETING_IDS: bool = True
 
-    #: Maximum body size for BBB API requests as well as back-end requests to
-    #: BBB nodes.
-    MAX_BODY: int = 1024 * 1024  # 1MB
+    #: Root path for all the directories used by the recording importer. Must be
+    #: fully write-able for bbblb and parts of it also read-able by your foront-end
+    #: HTTP server. See docs/recording.md for details.
+    RECORDING_PATH: pathlib.Path
+
+    #: Maximum number of import tasks to perform at the same timer. It is usually
+    #: not a good idea to increase this too much.
+    RECORDING_THREADS: int = 1
+
+    #: Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
+    #: can be used to refer to the global DOMAIN config, or the realm of the
+    #: current tenant.
+    PLAYBACK_DOMAIN: str = "{DOMAIN}"
 
     #: Poll interval in seconds for the background server health and meeting checker
     POLL_INTERVAL: int = 30
 
-    # An ONLINE server that fails during a poll is marked UNSTABLE immediately and won't get new meetings.
-    # Existing meetings will still be served until the server is fully OFFLINE.
-
-    #: Number of errors after which an UNSTABLE server is marked OFFLINE and remaining meetings are lost.
+    #: Number of poll errors after which a server is marked OFFLINE and all meetings on it are considered lost.
     POLL_FAIL: int = 3
-    #: Number of successes in a row after a server is considered ONLINE again.
+
+    #: Number of successfull polls in a row before a server is considered ONLINE again.
     POLL_RECOVER: int = 5
 
-    # Expected base load per meeting.
+    #: Expected base load per meeting.
     LOADFACTOR_MEETING: float = 15.0
-    # Expected load per user in a meeting
+
+    #: Expected additional load per user in a meeting
     LOADFACTOR_SIZE: float = 1.0
-    # Expected load per voice user
+
+    #: Expected additional load per voice user
     LOADFACTOR_VOICE: float = 0.5
-    # Expected load per video user
+
+    #: Expected additional load per video user
     LOADFACTOR_VIDEO: float = 0.5
 
-    # Initial load penalty for new meetings.
-    # This value is used to predict the future load for new meetings and should match
-    # the load of a 'typical' meeting on your cluster. The initial load penalty will
-    # slowly decrease over the first hour of a meeting until we can assume that the
-    # measured load is accurate enough.
-    # The idea is to avoid the 'trampling herd' effect where multiple meetings are
-    # started in a short time and end up on the same server.
-    excpected_size = 30
-    LOADFACTOR_INITIAL: float = LOADFACTOR_MEETING + excpected_size * (
-        LOADFACTOR_SIZE + LOADFACTOR_VOICE + LOADFACTOR_VIDEO
-    )
+    #: Initial load penalty for new meetings.
+    #: This value is used to predict the future load for new meetings and should
+    #: match the load of a 'typical' meeting on your cluster. The penalty will
+    #: slowly decrease over time until we can assume that the meeting won't
+    #: suddenly grow anymore.
+    #: The idea is to avoid the 'trampling herd' effect where multiple meetings
+    #: are started in a short time and would otherwise end up on the same server.
+    LOADFACTOR_INITIAL: float = 75.0
 
-    API_BRANDING: str = "Served by BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
+    #: Maximum number of meetings or recordings to return from APIs that
+    #: potentially return an unlimited amount of data.
+    MAX_ITEMS: int = 1000
+
+    #: Maximum body size for BBB API requests, both front-end and back-end.
+    #: This does not affect presentation uploads, so 1MB should be plenty.
+    MAX_BODY: int = 1024 * 1024
+
+    #: How often to retry webhooks if the target fails to respond.
+    WEBHOOK_RETRY: int = 3
+
+    #: Enable debug and SQL logs
+    DEBUG: bool = False
 
     def populate(self, verify=True):
         if self.get_missing():
