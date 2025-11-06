@@ -53,13 +53,12 @@ path = "bbblb/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "bbblb/*.py",
+  "bbblb/",
   "/uv.lock",
-  "docs/*.md"
+  "docs/"
 ]
 exclude = [
-  "*.json",
-  "pkg/_compat.py",
+
 ]
 
 [tool.hatch.build.targets.wheel]
