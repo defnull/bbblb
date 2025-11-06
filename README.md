@@ -9,12 +9,11 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 ## Features
 
 * **Multi-Tenancy**: Allow multiple front-end applications or customers to share the same BigBlueButton cluster while keeping their meetings and recordings strictly separated.
-* **Advanced Loadbalancing**: New meetings are created on the BBB servers with the lowest *load*, which is updated in realtime and calculated based un multiple tuneable factors. The algorithm expscially tries to avoid the 'trampling herd' problem when multiple meetings with unknown size are created at the same time.
-* **Recording Management**: Recordings are transferred from the BBB servers to central storage via a simple and robust `post_publish` script that does not need any configuration, `ssh` connectivity or shared network file system to work.
+* **Advanced Loadbalancing**: New meetings are created on the BBB servers with the lowest *load*, which is updated in realtime and calculated based un multiple tune-able factors. The algorithm espscially tries to avoid the 'trampling herd' problem when multiple meetings with unknown size are created at the same time and may end up on the same back-end server.
+* **Recording Management**: Recordings are transferred from the BBB servers to central storage via a simple and robust `post_publish` script. No special configuration, `ssh` connectivity or shared network file system necessary.
 * **Callback Relay**: Callbacks registered for a meeting are properly relayed between the back-end BBB server and the front-end application with a robust retry-mechanism.
-* **Control API**: BBBLB offers its own API and command line tool to fetch health information, manage tenants or backend servers, or perform maintenance tasks.
-* **Scaleable**: Most existing BigBlueButton Load Balancer implementations claim to be scalable. Until I have time to actually benchmark those claims, I'll also just claim that BBBLB scales to hundreds of backend servers and thousands of meetings without any issues. The bottleneck will always be your BBB cluster, not BBBLB. Trust me bro. 
-* **Easy to deploy**: That's a lie. But it's easier to deploy than most other BigBlueButton Load Balancer implementations.
+* **Control API**: BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
+* **Easy to deploy**: At least easi*er* than most other BigBlueButton Load Balancer implementations.
 
 
 ## Planned features
@@ -37,13 +36,14 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 | Recording upload via HTTPS | Yes | No 1) |
 | Graceful handling of unstable back-end servers | Yes | No 2) |
 | Deployed as a single app/container | Yes 3) | No 4) |
-| Scales to many concurrent users | Yes | No 5) |
+| Scales to many concurrent users | Yes 5) | No 6) |
 
 1) You need ssh/rsync or a shared file system for recording transfer.
 2) Scalelite immediately breaks all meetings on an unresponsive server, even if it's only a short temporary issue.
 3) BBBLB greatly benefits from a fast static-file HTTP server (e.g. nginx or caddy) in front of it, and a Postgres Database instead of sqlite, but can also run as a single self-contained application if you prefer.
 4) Scalelite needs a recording importer and a poller in addition to its main server process. Both cannot be scaled to multiple instances or stuff will break.
-5) Scalelite uses ruby on rails and synchronous handlers, which means that it can only serve a limited number of requests at a time. For very large clusters, this may sometimes become a bottleneck.
+5) Most existing BBB load balancers claim to be scalable. Until I have time to actually benchmark those claims, I'll also just claim that BBBLB scales to hundreds of backend servers and thousands of meetings without any issues. The bottleneck will always be your BBB cluster, not BBBLB. Trust me bro. 
+6) Scalelite uses ruby on rails and synchronous handlers, which means that it can only serve a limited number of requests at a time. For very large clusters, this may sometimes become a bottleneck.
 
 # Documentation
 
