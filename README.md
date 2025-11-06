@@ -20,15 +20,15 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 
 * [ ] A `bbblb-agent` command line tool that can:
   * Auto-register and enable back-end BBB servers when they start up and disable them when they shut down.
-  * Report additional health and load information from back-end BBB servers to bbblb for better load balancing.
+  * Report additional health and load information from back-end BBB servers to BBBLB for better load balancing.
 * [ ] A `bbblb` admin command line tool that can:
   * Manage tenants, servers, running meetings or recordings.
   * Display and export statistics or metrics.
 * [ ] Rate limiting and DoS protection that is fair to unaffected tenants.
 
-## Totally not a biased feature comparison againwithst Scalelite
+## Totally not a biased feature comparison against Scalelite
 
-ScalScaleliteeite is the reference implementation of a BigBlueButton Load Balancer, developed by the creators of BigBlueButton themselves.
+Scalelite is the reference implementation of a BigBlueButton Load Balancer, developed by the creators of BigBlueButton themselves.
 
 | Feature | BBBLB | Scalelite |
 | ------- | ----- | --------- |
@@ -46,7 +46,7 @@ ScalScaleliteeite is the reference implementation of a BigBlueButton Load Balanc
 
 ## API Usage
 
-See (API Docs)[./docs/API.md] (TODO)
+See [API Docs](https://github.com/defnull/bbblb/blob/main/docs/API.md) (TODO)
 
 ## Deploment
 

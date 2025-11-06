@@ -70,11 +70,11 @@ Check the logs and try to fix the issue, then upload the (fixed) recording again
 The importer will pick up all tasks from the `{RECORDING_PATH}/inbox/` directory on startup, so even after a crash, the is usually no need to intervene.
 If you notice that some files in the inbox directory are not processed after a crash, follow these steps:
 
-* Shutdown all bbblb processes. Make sure they are really stopped.
+* Shutdown all BBBLB processes. Make sure they are really stopped.
 * Remove all directories in the `{RECORDING_PATH}/work/` directory. Those may prevent the importer from picking up old tasks from the inbox directory on start-up.
 * If the crash was caused by disk issues, check your `{RECORDING_PATH}/failed/` directory for recent files and move them back to `{RECORDING_PATH}/inbox/`.
 * Optionally scan the entire `{RECORDING_PATH}/` for `*.temp` files or directories and remove those. They do not cause any harm, but consume space and are not needed anymore.
-* Now start bbblb again and watch your `inbox` and `failed` directories as well
+* Now start BBBLB again and watch your `inbox` and `failed` directories as well
 * as your logs. Your inbox should clear quickly.
 
 ### How to migrate old recordings?
@@ -97,7 +97,7 @@ The API will translate all URLs found in the original `metadata.xml` files autom
 
 ### What happens during a recording import?
 
-When uploading a recording to the API, bbblb generates a unique `task` ID and creates an `inbox/{task}.tar` file.
+When uploading a recording to the API, BBBLB generates a unique `task` ID and creates an `inbox/{task}.tar` file.
 After a successfull upload, the actual import task will be scheduled to execute in the background.
 
 The import task will try to create a `work/{task}/` directory and cancel itself if that directory already exists.
