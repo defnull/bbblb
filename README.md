@@ -16,19 +16,20 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 * **Scaleable**: Most existing BigBlueButton Load Balancer implementations claim to be scalable. Until I have time to actually benchmark those claims, I'll also just claim that BBBLB scales to hundreds of backend servers and thousands of meetings without any issues. The bottleneck will always be your BBB cluster, not BBBLB. Trust me bro. 
 * **Easy to deploy**: That's a lie. But it's easier to deploy than most other BigBlueButton Load Balancer implementations.
 
+
 ## Planned features
 
-* [ ] A `bbblb-agent` command line tool that can:
+* A `bbblb-agent` command line tool that can:
   * Auto-register and enable back-end BBB servers when they start up and disable them when they shut down.
   * Report additional health and load information from back-end BBB servers to BBBLB for better load balancing.
-* [ ] A `bbblb` admin command line tool that can:
+* A `bbblb` admin command line tool that can:
   * Manage tenants, servers, running meetings or recordings.
   * Display and export statistics or metrics.
-* [ ] Rate limiting and DoS protection that is fair to unaffected tenants.
+* Rate limiting and DoS protection that is fair to unaffected tenants.
 
-## Totally not a biased feature comparison against Scalelite
+## Feature comparison with Scalelite (totally not biased at all)
 
-Scalelite is the reference implementation of a BigBlueButton Load Balancer, developed by the creators of BigBlueButton themselves.
+[Scalelite](https://github.com/blindsidenetworks/scalelite) is developed by [Blindside Networks](https://blindsidenetworks.com/) and could be seen to be the *standard solution* and in some way also a *reference implementation* for BigBlueButton Load Balancers. It is certainly not the only implementation out there, but the one all others compare against.
 
 | Feature | BBBLB | Scalelite |
 | ------- | ----- | --------- |
@@ -40,17 +41,16 @@ Scalelite is the reference implementation of a BigBlueButton Load Balancer, deve
 
 1) You need ssh/rsync or a shared file system for recording transfer.
 2) Scalelite immediately breaks all meetings on an unresponsive server, even if it's only a short temporary issue.
-3) BBBLB greatly benefits from a fast static-file HTTP server (e.g. nginx or caddy) in front of it, but can also run on its own.
+3) BBBLB greatly benefits from a fast static-file HTTP server (e.g. nginx or caddy) in front of it, and a Postgres Database instead of sqlite, but can also run as a single self-contained application if you prefer.
 4) Scalelite needs a recording importer and a poller in addition to its main server process. Both cannot be scaled to multiple instances or stuff will break.
-5) Scalelite uses ruby on rails and synchronous handlers, which means that it can only serve a limited number of requests at the same time.
+5) Scalelite uses ruby on rails and synchronous handlers, which means that it can only serve a limited number of requests at a time. For very large clusters, this may sometimes become a bottleneck.
 
-## API Usage
+# Documentation
 
-See [API Docs](https://github.com/defnull/bbblb/blob/main/docs/API.md) (TODO)
-
-## Deploment
-
-TODO
+* [docs/deployment.md](https://github.com/defnull/bbblb/blob/main/docs/deployment.md): Getting started.
+* [docs/config.md](https://github.com/defnull/bbblb/blob/main/docs/config.md): Full list of configuration parameters (todo)
+* [docs/API.md](https://github.com/defnull/bbblb/blob/main/docs/API.md): API Documentation (todo)
+* [docs/recording.md](https://github.com/defnull/bbblb/blob/main/docs/recording.md): Details about recording management
 
 # Contributing
 
