@@ -27,6 +27,10 @@ async def get_pool():
     return CONNPOOL
 
 
+async def get_client():
+    return aiohttp.ClientSession(connector=await get_pool(), connector_owner=False)
+
+
 async def close_pool():
     if CONNPOOL and not CONNPOOL.closed:
         await CONNPOOL.close()
@@ -87,9 +91,7 @@ class BBBClient:
         # Hint: Closing a session does nothing if it does not own the connector,
         # so we do not need to close it.
         if not self.session or self.session.closed:
-            self.session = aiohttp.ClientSession(
-                connector=await get_pool(), connector_owner=False
-            )
+            self.session = await get_client()
         return self.session
 
     def encode_uri(self, endpoint: str, query: dict[str, str]):

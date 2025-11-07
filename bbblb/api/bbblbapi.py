@@ -124,16 +124,17 @@ async def trigger_callback(
     params: typing.Mapping[str, str] | None = None,
     data: bytes | typing.Mapping[str, str] | None = None,
 ):
-    for i in range(config.WEBHOOK_RETRY):
-        try:
-            async with bbblib.HTTP.request(method, url, params=params, data=data) as rs:
-                rs.raise_for_status()
-        except aiohttp.ClientError:
-            LOG.warning(
-                f"Failed to forward callback {url} ({i + 1}/{config.WEBHOOK_RETRY})"
-            )
-            await asyncio.sleep(10 * i)
-            continue
+    async with await bbblib.get_client() as client:
+        for i in range(config.WEBHOOK_RETRY):
+            try:
+                async with client.request(method, url, params=params, data=data) as rs:
+                    rs.raise_for_status()
+            except aiohttp.ClientError:
+                LOG.warning(
+                    f"Failed to forward callback {url} ({i + 1}/{config.WEBHOOK_RETRY})"
+                )
+                await asyncio.sleep(10 * i)
+                continue
 
 
 async def fire_callback(callback: model.Callback, payload: dict, clear=True):

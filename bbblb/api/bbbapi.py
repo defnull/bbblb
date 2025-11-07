@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import typing
 import uuid
-import lxml.builder
 import lxml.etree
 import logging
 from sqlalchemy import update
