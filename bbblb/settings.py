@@ -137,9 +137,10 @@ class BaseConfig:
 
 
 class BBBLBConfig(BaseConfig):
-    #: An sqlalchemy-style database URL. MUST be an async-capable engine
-    #: Supportet are sqlite+aiosqlite:// and postgresql+asyncpg:// schemes.
-    DB_URI: str
+    #: An sqlalchemy compatible database connection string, starting with either
+    #: `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
+    #: or `postgresql://user:pass@host/name`.
+    DB: str
 
     #: Primary domain for this service. This will be added as bbblb-origin
     #: metadata to meetings and is used by e.g. the recording upload script

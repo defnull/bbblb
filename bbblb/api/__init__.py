@@ -17,7 +17,7 @@ from bbblb.settings import config
 
 @asynccontextmanager
 async def lifespan(app: Starlette):
-    await model.init_engine(config.DB_URI, echo=False)
+    await model.init_engine(config.DB, echo=False)
     poll_worker = poller.Poller()
     importer = recordings.RecordingImporter(
         basedir=pathlib.Path(config.RECORDING_PATH),

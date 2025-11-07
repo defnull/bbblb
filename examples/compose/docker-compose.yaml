@@ -9,7 +9,7 @@ services:
       target: app
     restart: unless-stopped
     environment:
-      - BBBLB_DB=postgresql+asyncpg://bbblb:bbblb@postgres/bbblb
+      - BBBLB_DB=postgresql://bbblb:bbblb@postgres/bbblb
       - BBBLB_RECORDING_PATH=/data/recordings
     volumes:
       - ./data/recordings:/data/recordings

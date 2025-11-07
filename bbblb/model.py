@@ -62,6 +62,12 @@ ScopedSession: async_scoped_session[AsyncSession]
 
 async def init_engine(db: str, echo=False):
     global async_engine, AsyncSessionMaker, ScopedSession
+
+    if db.startswith("sqlite://"):
+        db = db.replace("sqlite://", "sqlite+aiosqlite://")
+    elif db.startswith("postgres://"):
+        db = db.replace("postgres://", "postgres+asyncpg://")
+
     async_engine = create_async_engine(db, echo=echo)
     AsyncSessionMaker = async_sessionmaker(async_engine, expire_on_commit=False)
 

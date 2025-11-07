@@ -13,9 +13,10 @@ See `examples/bbblb.env.example` for a full list.
 The options here are lossely ordered by topic.
 
 <!-- snip_start -->
-`DB_URI` (type: `str`, **REQUIRED**)  
-An sqlalchemy-style database URL. MUST be an async-capable engine
-Supportet are sqlite+aiosqlite:// and postgresql+asyncpg:// schemes.
+`DB` (type: `str`, **REQUIRED**)  
+An sqlalchemy compatible database connection string, starting with either
+`sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
+or `postgresql://user:pass@host/name`.
 
 `DOMAIN` (type: `str`, **REQUIRED**)  
 Primary domain for this service. This will be added as bbblb-origin
