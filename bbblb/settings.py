@@ -81,8 +81,11 @@ class BaseConfig:
             if not env_name.startswith(env_prefix):
                 continue
             name = env_name[len(env_prefix) :]
+            source = f"env.{env_name}"
             if name in self._options or strict:
-                self._set(name, os.environ[env_name], f"env.{env_name}")
+                self._set(name, os.environ[env_name], source)
+            else:
+                LOG.warning(f"Ignoring unrecognized config option: {name} ({source})")
 
     def get_missing(self):
         return set(self._options) - set(self.__dict__)
@@ -223,11 +226,11 @@ class BBBLBConfig(BaseConfig):
     #: Enable debug and SQL logs
     DEBUG: bool = False
 
-    def populate(self, verify=True):
+    def populate(self, verify=True, strict=True):
         if self.get_missing():
-            config.load_env("BBBLB_", strict=True)
+            config.load_env("BBBLB_", strict=strict)
             if config.CONFIG:
-                config.load_file(config.CONFIG, remove_prefix="BBBLB_", strict=True)
+                config.load_file(config.CONFIG, remove_prefix="BBBLB_", strict=strict)
         if verify:
             self.ensure_complete()
 
