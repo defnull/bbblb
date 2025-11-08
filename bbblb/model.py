@@ -68,8 +68,9 @@ async def init_engine(db: str, echo=False):
     elif db.startswith("postgresql://"):
         db = db.replace("postgresql://", "postgresql+asyncpg://")
     else:
-        raise ValueError(f"Unsupported database dialect: {db} (must be sqlite:// or postgresql://)")
-    
+        raise ValueError(
+            f"Unsupported database dialect: {db} (must be sqlite:// or postgresql://)"
+        )
 
     async_engine = create_async_engine(db, echo=echo)
     AsyncSessionMaker = async_sessionmaker(async_engine, expire_on_commit=False)
