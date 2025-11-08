@@ -4,21 +4,23 @@
 example.com *.example.com {
 
   ## Serve the presentation player bundled with the image.
-  handle /playback/presentation/2.3/* {
-    root * /usr/share/bbb-playback/
+  handle_path /playback/presentation/2.3/* {
+    root * /usr/share/bbb-playback
+    try_files {path} /index.html
+    file_server
   }
 
   ## Serve recording files from a volume mounted into the container
   handle_path /playback/* {
-    root * /usr/share/bbblb/public/
+    root * /usr/share/bbblb/recordings/public
     file_server
   }
 
   ## Serve 'presentation' files from a separate directory, because the player
   ## expects them to be there by default. Not needed if you use the bundled
   ## player from /usr/share/bbb-playback/
-  # handle /presentation/* {
-  #   root * /usr/share/bbblb/public/
+  # handle_path /presentation/* {
+  #   root * /usr/share/bbblb/recordings/public/presentation
   #   file_server
   # }
 
