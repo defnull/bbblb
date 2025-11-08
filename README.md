@@ -9,8 +9,8 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 ## Features
 
 * **Multi-Tenancy**: Allow multiple front-end applications or customers to share the same BigBlueButton cluster while keeping their meetings and recordings strictly separated.
-* **Advanced Loadbalancing**: New meetings are created on the BBB servers with the lowest *load*, which is updated in realtime and calculated based un multiple tune-able factors. The algorithm espscially tries to avoid the 'trampling herd' problem when multiple meetings with unknown size are created at the same time and may end up on the same back-end server.
-* **Recording Management**: Recordings are transferred from the BBB servers to central storage via a simple and robust `post_publish` script. No special configuration, `ssh` connectivity or shared network file system necessary.
+* **Advanced Loadbalancing**: New meetings are created on the BBB servers with the lowest *load*, which is updated in realtime and calculated based un multiple tuneable factors. The algorithm especially tries to avoid the 'trampling herd' problem when multiple meetings with unknown size are created in quick succession and may end up on the same back-end server.
+* **Recording Management**: Recordings are transferred from the BBB servers to central storage via a simple and robust `post_publish` script. No special configuration, `ssh` transfers or shared network file system necessary.
 * **Callback Relay**: Callbacks registered for a meeting are properly relayed between the back-end BBB server and the front-end application with a robust retry-mechanism.
 * **Control API**: BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
 * **Easy to deploy**: At least easi*er* than most other BigBlueButton Load Balancer implementations.
@@ -27,7 +27,7 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 
 ## Feature comparison with Scalelite (totally not biased at all)
 
-[Scalelite](https://github.com/blindsidenetworks/scalelite) is developed by [Blindside Networks](https://blindsidenetworks.com/) and could be seen to be the *standard solution* and in some way also a *reference implementation* for BigBlueButton Load Balancers. It is certainly not the only implementation out there, but the one all others compare against.
+[Scalelite](https://github.com/blindsidenetworks/scalelite) is developed by [Blindside Networks](https://blindsidenetworks.com/) and is more or less the *reference implementation* for BigBlueButton Load Balancers. It is certainly not the only implementation out there, but the one all others compare against.
 
 | Feature | BBBLB | Scalelite |
 | ------- | ----- | --------- |
@@ -52,17 +52,17 @@ The documentation is still a work in progress. Pull requests are very welcomed!
 
 ## Deployment and Getting Started
 
-To get started, check out the docker compose based deployment example in [examples/bbblb-compose](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose) and refer to [examples/bbblb-compose/README.md](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose/README.md) for a step by step instructions.
+To get started, check out the docker-compose based deployment example in [examples/bbblb-compose](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose) and refer to [examples/bbblb-compose/README.md](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose/README.md) for step by step instructions.
 
 Docker images are available via `ghcr.io`:
 
 * `ghcr.io/defnull/bbblb:main` Main branch
-* `ghcr.io/defnull/bbblb:latest` Whatever tag pushed last. DO NOT USE as this can jump to older maintenance releases at the moment.
+* `ghcr.io/defnull/bbblb:latest` Whatever was pushed last. DO NOT USE as this can jump to older maintenance releases.
 * `ghcr.io/defnull/bbblb:X` Latest minor or patch release for the major version `X` (e.g. `1`)
 * `ghcr.io/defnull/bbblb:X.Y` Latest patch release for the minor version `X.Y` (e.g. `1.2`)
 * `ghcr.io/defnull/bbblb:X.Y.Z` A specific patch release `X.Y.Z` (e.g. `1.2.3`)
 
-Manual deployments without docker are of cause also possible. The most complex part is not BBBLB, but the front-ent http server to get presentation playback to work. We will provide documentation in the future, pull requests are very welcomed.
+Manual deployments without docker are of cause also possible. We will provide documentation in the future, pull requests are very welcomed.
 
 ## Configuration Options
 
@@ -70,7 +70,7 @@ See [docs/config.md](https://github.com/defnull/bbblb/blob/main/docs/config.md) 
 
 ## API Documentation
 
-See [docs/API.md](https://github.com/defnull/bbblb/blob/main/docs/API.md) for details.
+See [docs/API.md](https://github.com/defnull/bbblb/blob/main/docs/API.md) for details (work in progress). 
 
 ## Recording Management
 
