@@ -1,9 +1,10 @@
 #!/bin/sh
 . /app/.venv/bin/activate
 
-if [ -n "$BBBLB_RECORDING_PATH" ]; then
-    mkdir -p "$BBBLB_RECORDING_PATH"
-    chown bbblb "$BBBLB_RECORDING_PATH" "$BBBLB_RECORDING_PATH"/*
+if [ -n "$BBBLB_PATH_DATA/recordings" ]; then
+    mkdir -p "$BBBLB_PATH_DATA/recordings"
 fi
+
+chown bbblb "$BBBLB_PATH_DATA" "$BBBLB_PATH_DATA"/*
 
 exec runuser -u bbblb -- "$@"

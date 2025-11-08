@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 from functools import partial
-import pathlib
 from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
@@ -20,7 +19,7 @@ async def lifespan(app: Starlette):
     await model.init_engine(config.DB, echo=False)
     poll_worker = poller.Poller()
     importer = recordings.RecordingImporter(
-        basedir=pathlib.Path(config.RECORDING_PATH),
+        basedir=config.PATH_DATA / "recordings",
         concurrency=config.RECORDING_THREADS,
     )
 
@@ -52,7 +51,7 @@ def make_playback_routes():
         Mount(
             "/playback",
             app=StaticFiles(
-                directory=config.RECORDING_PATH / "public",
+                directory=config.PATH_DATA / "recordings" / "public",
                 check_dir=False,
                 follow_symlink=True,
             ),
@@ -71,7 +70,7 @@ def make_playback_routes():
 def make_routes():
     return [
         Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
-        Mount("/api", routes=bbblbapi.api_routes),
+        Mount("/bbblb/api", routes=bbblbapi.api_routes),
         *make_playback_routes(),
     ]
 

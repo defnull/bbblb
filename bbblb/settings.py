@@ -1,6 +1,6 @@
 import os
 import logging
-import pathlib
+from pathlib import Path
 import shlex
 import typing
 import types
@@ -25,7 +25,7 @@ class BaseConfig:
     #: If the CONFIG option is defined (via environment variables or explicitly
     #: during initialization) then this file is loaded and parsed. Its content
     #: will overwrite other values or defaults.
-    CONFIG: pathlib.Path | None = None
+    CONFIG: Path | None = None
 
     def __init__(self):
         self._options = {
@@ -57,7 +57,7 @@ class BaseConfig:
             if name in self._options and not hasattr(self, name):
                 self._set(name, value, "set_defaults")
 
-    def load_file(self, path: pathlib.Path, remove_prefix="", strict=False):
+    def load_file(self, path: Path, remove_prefix="", strict=False):
         with open(path, "rt") as fp:
             for n, line in enumerate(fp):
                 line = line.strip()
@@ -111,8 +111,8 @@ class BaseConfig:
                 return tdef(value)
             elif tdef is bool and isinstance(value, (str, int, bool)):
                 return str(value).lower() in ("yes", "true", "1")
-            elif tdef is pathlib.Path and isinstance(value, (str, pathlib.Path)):
-                return pathlib.Path(value).resolve()
+            elif tdef is Path and isinstance(value, (str, Path)):
+                return Path(value).resolve()
         else:
             raise ConfigError(f"Unable to convert between {type(value)} and {anno}")
 
@@ -128,20 +128,17 @@ class BaseConfig:
             return super().__setattr__(name, value)
         return self._set(name, value, "Direct assignment")
 
-    def __getattr__(self, name: str):
-        if name.startswith("_"):
-            return super().__getattribute__(name)
-        if name in self._options:
-            raise ConfigError(f"Missing config parameter: {name}")
-        raise AttributeError(name)
+    if not typing.TYPE_CHECKING:
+
+        def __getattr__(self, name: str):
+            if name.startswith("_"):
+                return super().__getattribute__(name)
+            if name in self._options:
+                raise ConfigError(f"Missing config parameter: {name}")
+            raise AttributeError(name)
 
 
 class BBBLBConfig(BaseConfig):
-    #: An sqlalchemy compatible database connection string, starting with either
-    #: `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
-    #: or `postgresql://user:pass@host/name`.
-    DB: str
-
     #: Primary domain for this service. This will be added as bbblb-origin
     #: metadata to meetings and is used by e.g. the recording upload script
     #: to get back at bbblb from the BBB nodes.
@@ -150,6 +147,17 @@ class BBBLBConfig(BaseConfig):
     #: Secret used to sign and verify API credentials and protected callbacks.
     #: This is NOT your BBB API secret.
     SECRET: str
+
+    #: An sqlalchemy compatible database connection string, starting with either
+    #: `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
+    #: or `postgresql://user:pass@host/name`.
+    DB: str = "sqlite:////usr/share/bbblb/sqlite.db"
+
+    #: The directory where BBBLB stores all its persistent data, including
+    #: recordings, lockfiles, logs and more. Must be fully write-able for BBBLB
+    #: and the `{PATH_DATA}/recordings` sub-directory must also be read-able by
+    #: your front-end HTTP server, if used. See docs/recording.md for details.
+    PATH_DATA: Path = Path("/usr/share/bbblb/")
 
     #: For each BBB API request, the value of this header is matched against the
     #: tenant realms to find the correct tenant. This defaults to the `Host`
@@ -161,11 +169,6 @@ class BBBLBConfig(BaseConfig):
     #: tenants. API clients will still see the unmodified meeting ID, but the scoped
     #: ID may end up in recording metadata and logs.
     SCOPED_MEETING_IDS: bool = True
-
-    #: Root path for all the directories used by the recording importer. Must be
-    #: fully write-able for bbblb and parts of it also read-able by your foront-end
-    #: HTTP server. See docs/recording.md for details.
-    RECORDING_PATH: pathlib.Path
 
     #: Maximum number of import tasks to perform at the same timer. It is usually
     #: not a good idea to increase this too much.

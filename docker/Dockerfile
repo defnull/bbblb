@@ -26,7 +26,8 @@ ADD . /app
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 
-VOLUME [ "/var/run/bbblb" ]
+VOLUME [ "/usr/share/bbblb" ]
+ENV BBBLB_PATH_DATA=/usr/share/bbblb/
 
 COPY docker/entrypoint.sh /entrypoint.sh
 ENTRYPOINT [ "/entrypoint.sh" ]

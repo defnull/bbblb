@@ -13,11 +13,6 @@ See `examples/bbblb.env.example` for a full list.
 The options here are lossely ordered by topic.
 
 <!-- snip_start -->
-`DB` (type: `str`, **REQUIRED**)  
-An sqlalchemy compatible database connection string, starting with either
-`sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
-or `postgresql://user:pass@host/name`.
-
 `DOMAIN` (type: `str`, **REQUIRED**)  
 Primary domain for this service. This will be added as bbblb-origin
 metadata to meetings and is used by e.g. the recording upload script
@@ -26,6 +21,17 @@ to get back at bbblb from the BBB nodes.
 `SECRET` (type: `str`, **REQUIRED**)  
 Secret used to sign and verify API credentials and protected callbacks.
 This is NOT your BBB API secret.
+
+`DB` (type: `str`, default: `"sqlite:////usr/share/bbblb/sqlite.db"`)  
+An sqlalchemy compatible database connection string, starting with either
+`sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
+or `postgresql://user:pass@host/name`.
+
+`PATH_DATA` (type: `Path`, default: `Path("/usr/share/bbblb/")`)  
+The directory where BBBLB stores all its persistent data, including
+recordings, lockfiles, logs and more. Must be fully write-able for BBBLB
+and the `{PATH_DATA}/recordings` sub-directory must also be read-able by
+your front-end HTTP server, if used. See docs/recording.md for details.
 
 `TENANT_HEADER` (type: `str`, default: `"Host"`)  
 For each BBB API request, the value of this header is matched against the
@@ -37,11 +43,6 @@ reach BBBLB.
 If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
 tenants. API clients will still see the unmodified meeting ID, but the scoped
 ID may end up in recording metadata and logs.
-
-`RECORDING_PATH` (type: `pathlib.Path`, **REQUIRED**)  
-Root path for all the directories used by the recording importer. Must be
-fully write-able for bbblb and parts of it also read-able by your foront-end
-HTTP server. See docs/recording.md for details.
 
 `RECORDING_THREADS` (type: `int`, default: `1`)  
 Maximum number of import tasks to perform at the same timer. It is usually
