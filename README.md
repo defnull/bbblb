@@ -15,7 +15,6 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 * **Control API**: BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
 * **Easy to deploy**: At least easi*er* than most other BigBlueButton Load Balancer implementations.
 
-
 ## Planned features
 
 * A `bbblb-agent` command line tool that can:
@@ -45,18 +44,39 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 5) Most existing BBB load balancers claim to be scalable. Until I have time to actually benchmark those claims, I'll also just claim that BBBLB scales to hundreds of backend servers and thousands of meetings without any issues. The bottleneck will always be your BBB cluster, not BBBLB. Trust me bro. 
 6) Scalelite uses ruby on rails and synchronous handlers, which means that it can only serve a limited number of requests at a time. For very large clusters, this may sometimes become a bottleneck.
 
+
+
 # Documentation
 
-* [docs/deployment.md](https://github.com/defnull/bbblb/blob/main/docs/deployment.md): Getting started.
-* [docs/config.md](https://github.com/defnull/bbblb/blob/main/docs/config.md): Full list of configuration parameters (todo)
-* [docs/API.md](https://github.com/defnull/bbblb/blob/main/docs/API.md): API Documentation (todo)
-* [docs/recording.md](https://github.com/defnull/bbblb/blob/main/docs/recording.md): Details about recording management
+The documentation is still a work in progress. Pull requests are very welcomed!
+
+# Deployment and Getting Started
+
+To get started, check out the docker compose based deployment example in [examples/bbblb-compose](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose) and refer to [examples/bbblb-compose/README.md](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose/README.md) for a step by step instructions.
+
+Manual deployments without docker are of cause also possible. The most complex part is not BBBLB, but the front-ent http server to get presentation playback to work. We will provide documentation in the future, pull requests are very welcomed.
+
+## Configuration Options
+
+See [docs/config.md](https://github.com/defnull/bbblb/blob/main/docs/config.md) for a list of all available configuration parameters or [examples/bbblb.env.example](https://github.com/defnull/bbblb/blob/main/examples/bbblb.env.example) for a fully documented env-file.
+
+## API Documentation
+
+See [docs/API.md](https://github.com/defnull/bbblb/blob/main/docs/API.md) for details.
+
+## Recording Management
+
+See [docs/recording.md](https://github.com/defnull/bbblb/blob/main/docs/recording.md) for details.
+
+
 
 # Contributing
 
 By contributing to this project, you confirm that you understand and agree to
 both the *Developer Certificate of Origin* and the *Contributor License
 Agreement*, which can be found in the `CONTRIBUTING.md` file. 
+
+
 
 # License
 
