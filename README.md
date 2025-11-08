@@ -50,9 +50,17 @@ BBBLB is currently in a **pre-alpha state**. It is a working prototype and **not
 
 The documentation is still a work in progress. Pull requests are very welcomed!
 
-# Deployment and Getting Started
+## Deployment and Getting Started
 
 To get started, check out the docker compose based deployment example in [examples/bbblb-compose](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose) and refer to [examples/bbblb-compose/README.md](https://github.com/defnull/bbblb/blob/main/examples/bbblb-compose/README.md) for a step by step instructions.
+
+Docker images are available via `ghcr.io`:
+
+* `ghcr.io/defnull/bbblb:main` Main branch
+* `ghcr.io/defnull/bbblb:latest` Whatever tag pushed last. DO NOT USE as this can jump to older maintenance releases at the moment.
+* `ghcr.io/defnull/bbblb:X` Latest minor or patch release for the major version `X` (e.g. `1`)
+* `ghcr.io/defnull/bbblb:X.Y` Latest patch release for the minor version `X.Y` (e.g. `1.2`)
+* `ghcr.io/defnull/bbblb:X.Y.Z` A specific patch release `X.Y.Z` (e.g. `1.2.3`)
 
 Manual deployments without docker are of cause also possible. The most complex part is not BBBLB, but the front-ent http server to get presentation playback to work. We will provide documentation in the future, pull requests are very welcomed.
 
