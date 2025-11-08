@@ -1,0 +1,41 @@
+
+
+## CHANGE THIS to your actual domain(s)
+example.com *.example.com {
+
+  ## Serve the presentation player bundled with the image.
+  handle /playback/presentation/2.3/* {
+    root * /usr/share/bbb-playback/
+  }
+
+  ## Serve recording files from a volume mounted into the container
+  handle_path /playback/* {
+    root * /usr/share/bbblb/public/
+    file_server
+  }
+
+  ## Serve 'presentation' files from a separate directory, because the player
+  ## expects them to be there by default. Not needed if you use the bundled
+  ## player from /usr/share/bbb-playback/
+  # handle /presentation/* {
+  #   root * /usr/share/bbblb/public/
+  #   file_server
+  # }
+
+  ## Forward both BBB and BBBLB API requests to the bbblb container
+  reverse_proxy /bbblb/* bbblb:8000
+  reverse_proxy /bigbluebutton/* bbblb:8000
+
+  ## FFor BBB Cluster Proxy setups you could use a rule similar to this one
+  ## to proxy request to a specific back-end server based on a path prefix.
+  #@proxy path_regexp proxy ^/p/(\w+)/(.*)$
+  #handle @proxy {
+  #  rewrite * {re.proxy.2}
+  #  reverse_proxy https://{re.proxy.1}.cluster.example.com
+  #}
+
+  ## CHANGE THIS so serve Greenlight or some other application from the root
+  ## path. You can also just keep it like this, then bbblb will display a
+  ## small info page by default.
+  reverse_proxy * bbblb:8000
+}

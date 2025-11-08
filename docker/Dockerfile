@@ -10,9 +10,6 @@ RUN addgroup -S bbblb \
 
 FROM base AS app
 
-ARG BUILD
-ENV BBBLB_BUILD=$BUILD
-
 WORKDIR /app
 
 # Install dependencies

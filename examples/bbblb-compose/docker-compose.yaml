@@ -1,0 +1,64 @@
+name: bbblb
+
+services:
+  bbblb:
+    ## Change the tag to 'X', 'X.Y' or 'X.Y.Z' to restrict or pin
+    ## your BBBLB version
+    image: "ghcr.io/defnull/bbblb:main"
+
+    ## Uncomment to build BBBLB from source instead
+    # build:
+    #   context: ../../
+    #   dockerfile: docker/Dockerfile
+    #   target: app
+
+    ## Store your BBBLB config in this file:
+    env_file: bbblb.env
+
+    environment:
+      ## This is the only config option defined here because it should
+      ## match the postgres container below.
+      - BBBLB_DB=postgresql://bbblb:bbblb@postgres/bbblb
+
+    volumes:
+      ## The docker container uses /usr/share/bbblb for persistent data
+      ## by default. If you change this, don't forget to also fix caddy.
+      - ./data/bbblb:/usr/share/bbblb
+
+    depends_on:
+      - postgres
+
+    restart: unless-stopped
+
+  caddy:
+    ## We build our own caddy container and bundle the bbb-playback
+    ## presentation player.
+    build:
+      context: ./caddy
+    volumes:
+      ## Caddy and BBBLB need to see the same data directory. If you 
+      ## change this, also change ./caddy/Caddyfile
+      - ./data/bbblb:/usr/share/bbblb
+      ## These files are just for caddy
+      - ./caddy/:/etc/caddy:ro
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    depends_on:
+      - bbblb
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      ## The database is only reachable by other cotainers, sow e can
+      ## use a weak password. If you change it, also tell BBBLB about it.
+      - POSTGRES_DB=bbblb
+      - POSTGRES_USER=bbblb
+      - POSTGRES_PASSWORD=bbblb
+    volumes:
+      - ./data/postgres17:/var/lib/postgresql/data
+    restart: unless-stopped
