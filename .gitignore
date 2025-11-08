@@ -7,6 +7,9 @@ wheels/
 *.egg-info
 .*cache
 
+# IDEs
+.vscode
+
 # Virtual environments
 .venv
 
@@ -14,4 +17,4 @@ wheels/
 testhook.py
 testdata
 .var
-examples/compose/data
+examples/bbblb-compose/data

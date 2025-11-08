@@ -10,6 +10,9 @@ wheels/
 # Virtual environments
 .venv
 
+# IDEs
+.vscode
+
 # Test data directories
 testhook.py
 testdata
