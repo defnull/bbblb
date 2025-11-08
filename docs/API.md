@@ -3,7 +3,7 @@
 BBBLB implements the [BBB API](https://docs.bigbluebutton.org/development/api/)
 and serves those routes under the standard `/bigbluebutton/api/*` path.
 
-It also provides its own management API under the `/api/v1/*` path. This API is
+It also provides its own management API under the `/bbblb/api/v1/*` path. This API is
 described here.
 
 ## Token Authentication

@@ -53,7 +53,7 @@ unless bbblb_server && bbblb_origin then
 end
 
 # Generate short-time security token for API request
-bbblb_api = "https://#{bbblb_origin}/api/v1/recordings/upload"
+bbblb_api = "https://#{bbblb_origin}/bbblb/api/v1/recordings/upload"
 bbblb_token = jwt.encode({sub: bbblb_server, exp: Time.now.to_i + 600}, secret, 'HS256', {kid: bbblb_server})
 
 format_dirs.each do |upload_dir|
