@@ -2,9 +2,7 @@ import asyncio
 import functools
 import hashlib
 import hmac
-import typing
 from urllib.parse import parse_qs
-import aiohttp
 import logging
 import jwt
 
@@ -118,34 +116,6 @@ class AuthContext:
 ##
 
 
-async def trigger_callback(
-    method: str,
-    url: str,
-    params: typing.Mapping[str, str] | None = None,
-    data: bytes | typing.Mapping[str, str] | None = None,
-):
-    async with await bbblib.get_client() as client:
-        for i in range(config.WEBHOOK_RETRY):
-            try:
-                async with client.request(method, url, params=params, data=data) as rs:
-                    rs.raise_for_status()
-            except aiohttp.ClientError:
-                LOG.warning(
-                    f"Failed to forward callback {url} ({i + 1}/{config.WEBHOOK_RETRY})"
-                )
-                await asyncio.sleep(10 * i)
-                continue
-
-
-async def fire_callback(callback: model.Callback, payload: dict, clear=True):
-    url = callback.forward
-    key = callback.tenant.secret
-    data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
-    await trigger_callback("POST", url, data=data)
-    async with model.scope() as session:
-        await session.delete(callback)
-
-
 @api("v1/callback/{uuid}/end/{sig}", name="bbblb:callback_end")
 @model.transactional(autocommit=True)
 async def handle_callback_end(request: Request):
@@ -172,7 +142,9 @@ async def handle_callback_end(request: Request):
         if callback.forward:
             # Fire and forget callback forward task
             asyncio.ensure_future(
-                trigger_callback("GET", callback.forward, params=request.query_params)
+                bbblib.trigger_callback(
+                    "GET", callback.forward, params=request.query_params
+                )
             )
         await model.ScopedSession.delete(callback)
 
@@ -223,7 +195,7 @@ async def handle_callback_proxy(request: Request):
     # Find and trigger callbacks
 
     for callback in callbacks:
-        asyncio.create_task(fire_callback(callback, payload, clear=True))
+        asyncio.create_task(bbblib.fire_callback(callback, payload, clear=True))
 
     return Response("OK", 200)
 

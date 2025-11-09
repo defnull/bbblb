@@ -14,8 +14,7 @@ import uuid
 import lxml.etree
 import urllib.parse
 
-from bbblb import model, utils
-from bbblb.api import bbblbapi
+from bbblb import bbblib, model, utils
 from bbblb.settings import config
 
 LOG = logging.getLogger(__name__)
@@ -34,7 +33,7 @@ class RecordingImportError(RuntimeError):
     pass
 
 
-def fix_playback_xml(playback: model.PlaybackFormat, root_tag: str = "format"):
+def playback_xml(playback: model.PlaybackFormat, root_tag: str = "format"):
     xml = lxml.etree.fromstring(playback.xml)
     xml.tag = root_tag
     playback_domain = config.PLAYBACK_DOMAIN.format(
@@ -511,7 +510,7 @@ class RecordingImportTask:
                     callbacks = (await session.execute(stmt)).scalars()
             for callback in callbacks:
                 asyncio.create_task(
-                    bbblbapi.fire_callback(
+                    bbblib.fire_callback(
                         callback,
                         {"meeting_id": external_id, "record_id": record_id},
                         clear=False,

@@ -41,7 +41,7 @@ from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.exc import NoResultFound, IntegrityError, OperationalError  # noqa: F401
 
-import bbblb.recordings
+
 
 LOG = logging.getLogger(__name__)
 
@@ -525,9 +525,6 @@ class PlaybackFormat(Base):
 
     # We need this for getMeetings search results, so store it ...
     xml: Mapped[str] = mapped_column(nullable=False)
-
-    def get_fixed_xml(self, root_tag: str):
-        return bbblb.recordings.fix_playback_xml(self, root_tag)
 
 
 # class Task(Base):

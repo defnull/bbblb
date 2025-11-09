@@ -601,7 +601,8 @@ async def handle_get_recordings(request: Request):
 
         playback_xml: ETree = rec_xml.find("playback")
         for playback in rec.formats:
-            playback_xml.append(playback.get_fixed_xml(root_tag="format"))
+            rec_xml = recordings.playback_xml(playback, root_tag="format")
+            playback_xml.append(rec_xml)
 
         all_recordings.append(rec_xml)
 

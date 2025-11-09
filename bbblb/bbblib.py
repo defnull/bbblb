@@ -1,12 +1,16 @@
+import asyncio
 from functools import cached_property
 import hashlib
 import hmac
 import typing
 import aiohttp
+import jwt
 import lxml.etree
 import lxml.builder
 import logging
 from urllib.parse import parse_qsl, urlencode, urljoin
+from bbblb import model
+from bbblb.settings import config
 
 import yarl
 
@@ -223,3 +227,31 @@ def verify_checksum_query(
         if hmac.compare_digest(clone.digest(), expected):
             return dict(cleaned), secret
     raise make_error("checksumError", "Checksum did not pass verification")
+
+
+async def trigger_callback(
+    method: str,
+    url: str,
+    params: typing.Mapping[str, str] | None = None,
+    data: bytes | typing.Mapping[str, str] | None = None,
+):
+    async with await get_client() as client:
+        for i in range(config.WEBHOOK_RETRY):
+            try:
+                async with client.request(method, url, params=params, data=data) as rs:
+                    rs.raise_for_status()
+            except aiohttp.ClientError:
+                LOG.warning(
+                    f"Failed to forward callback {url} ({i + 1}/{config.WEBHOOK_RETRY})"
+                )
+                await asyncio.sleep(10 * i)
+                continue
+
+
+async def fire_callback(callback: model.Callback, payload: dict, clear=True):
+    url = callback.forward
+    key = callback.tenant.secret
+    data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
+    await trigger_callback("POST", url, data=data)
+    async with model.scope() as session:
+        await session.delete(callback)
