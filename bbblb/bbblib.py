@@ -37,20 +37,37 @@ async def close_pool():
 
 
 class BBBResponse:
-    def __init__(self, xml: ETree, status_code=200):
+    def __init__(
+        self,
+        xml: ETree | None = None,
+        json: dict[str, typing.Any] | None = None,
+        status_code=200,
+    ):
+        assert xml or json
         self.xml = xml
+        self.json = json
         self.status_code = status_code
 
     @cached_property
     def success(self):
         return self.find("returncode") == "SUCCESS"
 
-    def find(self, xmlquery, default: str | None = None):
-        text = self.xml.findtext(xmlquery)
-        return text if text is not None else default
+    def find(self, query, default: str | None = None):
+        val = "___MISSING___"
+        if self.xml:
+            val = self.findtext(query, "___MISSING___")
+        elif self.json:
+            val = self.json.get(query, "___MISSING___")
+        return default if val == "___MISSING___" else val
 
     def __getattr__(self, name: str):
-        val = self.find(name, default="___MISSING___")
+        assert self.xml or self.json
+
+        val = "___MISSING___"
+        if self.xml:
+            val = self.find(name, "___MISSING___")
+        elif self.json:
+            val = self.json.get(name, "___MISSING___")
         if val == "___MISSING___":
             raise AttributeError(name)
         return val
@@ -60,25 +77,36 @@ class BBBResponse:
             if isinstance(self, RuntimeError):
                 raise self
             else:
-                raise (BBBError(self.xml, self.status_code))
+                raise BBBError(self.xml, self.json, self.status_code)
 
 
 class BBBError(BBBResponse, RuntimeError):
-    def __init__(self, xml: ETree, status_code=200):
-        BBBResponse.__init__(self, xml, status_code)
+    def __init__(
+        self,
+        xml: ETree | None = None,
+        json: dict[str, typing.Any] | None = None,
+        status_code=200,
+    ):
+        BBBResponse.__init__(self, xml, json, status_code)
         assert not self.success and self.messageKey and self.message
         RuntimeError.__init__(self, f"{self.messageKey}: {self.message}")
 
 
-def make_error(key: str, message: str, status_code=200):
-    return BBBError(
-        XML.response(
-            XML.returncode("FAILED"),
-            XML.messageKey(key),
-            XML.message(message),
-        ),
-        status_code,
-    )
+def make_error(key: str, message: str, status_code=200, json=False):
+    if json:
+        return BBBError(
+            json={"returncode": "FAILED", "messageKey": key, "message": message},
+            status_code=status_code,
+        )
+    else:
+        return BBBError(
+            xml=XML.response(
+                XML.returncode("FAILED"),
+                XML.messageKey(key),
+                XML.message(message),
+            ),
+            status_code=status_code,
+        )
 
 
 class BBBClient:
@@ -115,9 +143,10 @@ class BBBClient:
         self,
         endpoint: str,
         query: dict[str, str] | None = None,
-        body: bytes | None = None,
-        content_type: str | None = "application/xml",
+        body: bytes | typing.AsyncIterable[bytes] | None = None,
+        content_type: str | None = None,
         method: str | None = None,
+        expect_json=False,
     ) -> BBBResponse:
         method = method or ("POST" if body else "GET")
         url = self.encode_uri(endpoint, query or {})
@@ -152,10 +181,13 @@ class BBBClient:
                         "Unexpected response status: {response.status}",
                         response.status,
                     )
-                parser = lxml.etree.XMLParser()
-                async for chunk in response.content.iter_any():
-                    parser.feed(chunk)
-                return BBBResponse(parser.close())
+                if expect_json and response.content_type == "application/json":
+                    return BBBResponse(json=await response.json())
+                else:
+                    parser = lxml.etree.XMLParser()
+                    async for chunk in response.content.iter_any():
+                        parser.feed(chunk)
+                    return BBBResponse(xml=parser.close())
         except BaseException:
             return make_error("internalError", "Unresponsive backend server")
 

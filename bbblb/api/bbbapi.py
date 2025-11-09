@@ -11,7 +11,7 @@ import sqlalchemy
 import sqlalchemy.orm
 from starlette.requests import Request
 from starlette.routing import Route
-from starlette.responses import Response, RedirectResponse
+from starlette.responses import Response, RedirectResponse, JSONResponse
 import bbblb
 from bbblb import utils
 from bbblb import bbblib
@@ -34,15 +34,19 @@ def api(action: str, methods=["GET", "POST"]):
             try:
                 out = await func(request)
             except BBBError as err:
-                out = to_xml(err.xml, err.status_code)
+                out = err
             except Exception as err:
                 LOG.exception("Unhandled exception")
-                err = bbblib.make_error("internalError", repr(err), 500)
-                out = to_xml(err.xml, err.status_code)
+                out = bbblib.make_error("internalError", repr(err), 500)
             if isinstance(out, bbblib.BBBResponse):
-                out = to_xml(out.xml, 200)
+                if out.xml:
+                    out = to_xml(out.xml, out.status_code)
+                else:
+                    out = JSONResponse(out.json, out.status_code)
             elif isinstance(out, ETree):
                 out = to_xml(out, 200)
+            elif isinstance(out, dict):
+                out = JSONResponse(out, 200)
             return out
 
         path = "/" + action
@@ -103,7 +107,7 @@ async def require_meeting(tenant: model.Tenant, meeting_id: str):
 async def require_bbb_query(
     request: Request, tenant: model.Tenant, allow_query_in_body=True
 ):
-    """Return verified BBB API query parameters."""
+    """Return BBB API query parameters with the checksum verified and removed."""
     action = request.url.path.split("/")[-1]
     query_str = request.url.query
 
@@ -406,6 +410,8 @@ async def handle_send_chat_message(request: Request):
 @api("getJoinUrl", methods=["GET"])
 @model.transactional(autocommit=True)
 async def handle_get_join_url(request: Request):
+    # Cannot be implemmented in a load-balancer:
+    # https://github.com/bigbluebutton/bigbluebutton/issues/24212
     raise bbblib.make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )
@@ -414,9 +420,20 @@ async def handle_get_join_url(request: Request):
 @api("insertDocument", methods=["POST"])
 @model.transactional(autocommit=True)
 async def handle_insert_document(request: Request):
-    raise bbblib.make_error(
-        "notImplemented", "This API endpoint or feature is not implemented"
+    tenant = await require_tenant(request)
+    params = await require_bbb_query(request, tenant)
+    unscoped_id = require_param(params, "meetingID")
+    meeting = await require_meeting(tenant, unscoped_id)
+    server = await meeting.awaitable_attrs.server
+
+    bbb = BBBClient(server.api_base, server.secret)
+    ctype = request.headers.get("Content-Type")
+    stream = request.stream()
+    upstream = await bbb.action(
+        "insertDocument", params, body=stream, content_type=ctype, expect_json=True
     )
+
+    return upstream
 
 
 @api("isMeetingRunning")
@@ -470,7 +487,7 @@ async def handle_get_meetings(request: Request):
         tasks.append(api.action("getMeetings", params))
     for next_upstream in asyncio.as_completed(tasks):
         upstream = await next_upstream
-        if not upstream.success:
+        if not upstream.success or not upstream.xml:
             return
         for meeting_xml in upstream.xml.iterfind("meetings/meeting"):
             if meeting_xml.findtext("metadata/bbblb-tenant") != tenant.name:
@@ -502,7 +519,7 @@ async def handle_get_meeting_info(request: Request):
     if upstream.error == "notFound":
         await forget_meeting(meeting)
 
-    xml_fix_meeting_id(meeting, scoped_id, unscoped_id)
+    xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
 
 
@@ -684,6 +701,7 @@ async def handle_update_recordings(request: Request):
 @api("getRecordingTextTracks")
 @model.transactional(autocommit=True)
 async def handle_get_Recordings_text_tracks(request: Request):
+    # Can only be implemented for existing captions. TODO
     raise bbblib.make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )
@@ -692,6 +710,17 @@ async def handle_get_Recordings_text_tracks(request: Request):
 @api("putRecordingTextTrack", methods=["POST"])
 @model.transactional(autocommit=True)
 async def handle_put_recordings_text_track(request: Request):
+    # Requires significant work to implement, because caption processing
+    # requires scripts that run on the BBB server and modify the original
+    # recording, but:
+    #
+    # 1) The recording may no longer be present on that backend-server.
+    # 2) If it is, we would not be notified about the changes because the
+    #    post_publish hooks are not triggered again.
+    #
+    # IF we assume that captions do not need to be modified (cut marks) but
+    # already match the fully processed recording, then we COULD try to
+    # implement the necessary steps here, if ffmpeg is installed and available.
     raise bbblib.make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )
