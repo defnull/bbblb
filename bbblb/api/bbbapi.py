@@ -39,7 +39,7 @@ def api(action: str, methods=["GET", "POST"]):
                 LOG.exception("Unhandled exception")
                 out = bbblib.make_error("internalError", repr(err), 500)
             if isinstance(out, bbblib.BBBResponse):
-                if out.xml:
+                if out._xml:
                     out = to_xml(out.xml, out.status_code)
                 else:
                     out = JSONResponse(out.json, out.status_code)
@@ -487,7 +487,7 @@ async def handle_get_meetings(request: Request):
         tasks.append(api.action("getMeetings", params))
     for next_upstream in asyncio.as_completed(tasks):
         upstream = await next_upstream
-        if not upstream.success or not upstream.xml:
+        if not upstream.success:
             return
         for meeting_xml in upstream.xml.iterfind("meetings/meeting"):
             if meeting_xml.findtext("metadata/bbblb-tenant") != tenant.name:

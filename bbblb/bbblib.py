@@ -41,6 +41,10 @@ async def close_pool():
 
 
 class BBBResponse:
+    _xml: ETree | None = None
+    _json: dict[str, typing.Any] | None
+    status_code: int
+
     def __init__(
         self,
         xml: ETree | None = None,
@@ -48,9 +52,19 @@ class BBBResponse:
         status_code=200,
     ):
         assert xml or json
-        self.xml = xml
-        self.json = json
+        self._xml = xml
+        self._json = json
         self.status_code = status_code
+
+    @cached_property
+    def xml(self) -> ETree:
+        assert self._xml
+        return self._xml
+
+    @cached_property
+    def json(self) -> dict[str, typing.Any]:
+        assert self._json
+        return self._json
 
     @cached_property
     def success(self):
@@ -58,20 +72,20 @@ class BBBResponse:
 
     def find(self, query, default: str | None = None):
         val = "___MISSING___"
-        if self.xml:
+        if self._xml:
             val = self.findtext(query, "___MISSING___")
-        elif self.json:
-            val = self.json.get(query, "___MISSING___")
+        elif self._json:
+            val = self._json.get(query, "___MISSING___")
         return default if val == "___MISSING___" else val
 
     def __getattr__(self, name: str):
-        assert self.xml or self.json
+        assert self._xml or self._json
 
         val = "___MISSING___"
-        if self.xml:
+        if self._xml:
             val = self.find(name, "___MISSING___")
-        elif self.json:
-            val = self.json.get(name, "___MISSING___")
+        elif self._json:
+            val = self._json.get(name, "___MISSING___")
         if val == "___MISSING___":
             raise AttributeError(name)
         return val
@@ -81,7 +95,7 @@ class BBBResponse:
             if isinstance(self, RuntimeError):
                 raise self
             else:
-                raise BBBError(self.xml, self.json, self.status_code)
+                raise BBBError(self._xml, self._json, self.status_code)
 
 
 class BBBError(BBBResponse, RuntimeError):
