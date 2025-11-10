@@ -41,8 +41,6 @@ from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.exc import NoResultFound, IntegrityError, OperationalError  # noqa: F401
 
-
-
 LOG = logging.getLogger(__name__)
 
 P = typing.ParamSpec("P")
@@ -379,15 +377,13 @@ class Tenant(Base):
         return f"Tenant({self.name}')"
 
 
-class ServerState(enum.Enum):
-    #: All fine, this will get new meetings
-    ONLINE = 0
+class ServerHealth(enum.Enum):
+    #: All fine, this server will get new meetings.
+    AVAILABLE = 0
     #: Does not get new meetings, but existing meetings are sill served
     UNSTABLE = 1
     #: Existing meetings are considered 'Zombies' and forgotten.
-    OFFLINE = 3
-    #: Same as 'FAILING' but will also disable polling and health checks.
-    DISABLED = 4
+    OFFLINE = 2
 
 
 class Server(Base):
@@ -397,8 +393,12 @@ class Server(Base):
     domain: Mapped[str] = mapped_column(unique=True, nullable=False)
     secret: Mapped[str] = mapped_column(nullable=False)
 
-    state: Mapped[ServerState] = mapped_column(
-        IntEnum(ServerState), nullable=False, default=ServerState.DISABLED
+    #: New meetings are only created on enabled servers
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    #: New meetings are only created on AVAILABLE servers
+    health: Mapped[ServerHealth] = mapped_column(
+        IntEnum(ServerHealth), nullable=False, default=ServerHealth.OFFLINE
     )
     errors: Mapped[int] = mapped_column(nullable=False, default=0)
     recover: Mapped[int] = mapped_column(nullable=False, default=0)
@@ -412,7 +412,9 @@ class Server(Base):
     @classmethod
     def select_available(cls, tenant: Tenant):
         # TODO: Filter by tenant
-        return cls.select(state=ServerState.ONLINE).order_by(Server.load.desc())
+        stmt = cls.select(enabled=True, health=ServerHealth.AVAILABLE)
+        stmt = stmt.order_by(Server.load.desc())
+        return stmt
 
     @property
     def api_base(self):

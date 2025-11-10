@@ -91,16 +91,12 @@ class Poller:
         known = await server.awaitable_attrs.meetings
         meetings = {meeting.internal_id: meeting for meeting in known}
 
-        if server.state == model.ServerState.DISABLED:
-            if meetings:
-                LOG.debug(
-                    "Server {server.domain} is DISABLED but still has meetings, let's change that."
-                )
-            for meeting in meetings:
-                await meeting.delete()
-            return
+        if not server.enabled:
+            if not meetings:
+                return
+            LOG.debug("Disabled server {server.domain} still has meetings.")
 
-        LOG.info(f"Polling {server.api_base} (state={server.state.name})")
+        LOG.info(f"Polling {server.api_base} (state={server.health.name})")
         running_ids = set()
         load = 0.0
         success = True
@@ -153,12 +149,12 @@ class Poller:
                 f"Server {server.domain} has {len(running_ids)} meetings and a load of {load}"
             )
 
-            if server.state == model.ServerState.ONLINE:
+            if server.health == model.ServerHealth.AVAILABLE:
                 pass  # Already healthy
             elif server.recover < config.POLL_RECOVER:
                 # Server is still recovering
                 server.recover += 1
-                server.state = model.ServerState.UNSTABLE
+                server.health = model.ServerHealth.UNSTABLE
                 LOG.warning(
                     f"Server {server.domain} is UNSTABLE and recovering ({server.recover}/{config.POLL_RECOVER})"
                 )
@@ -166,20 +162,20 @@ class Poller:
                 # Server fully recovered
                 server.errors = 0
                 server.recover = 0
-                server.state = model.ServerState.ONLINE
+                server.health = model.ServerHealth.AVAILABLE
                 LOG.info(f"Server {server.domain} is ONLINE")
         else:
-            if server.state == model.ServerState.OFFLINE:
+            if server.health == model.ServerHealth.OFFLINE:
                 pass  # Already dead
             elif server.errors < config.POLL_FAIL:
                 # Server is failing
                 server.recover = 0  # Reset recovery counter
                 server.errors += 1
-                server.state = model.ServerState.UNSTABLE
+                server.health = model.ServerHealth.UNSTABLE
                 LOG.warning(
                     f"Server {server.domain} is UNSTABLE and failing ({server.errors}/{config.POLL_FAIL})"
                 )
             else:
-                # Server failed too often, hive up
-                server.state = model.ServerState.OFFLINE
+                # Server failed too often, give up
+                server.health = model.ServerHealth.OFFLINE
                 LOG.warning(f"Server {server.domain} is OFFLINE")
