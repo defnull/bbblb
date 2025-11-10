@@ -1,8 +1,20 @@
+import asyncio
+import functools
 import importlib
 import pkgutil
 from bbblb.settings import ConfigError, config as cfg
 import click
 import os
+
+
+def run_async(func):
+    """Decorator that wraps coroutine with asyncio.run."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return asyncio.run(func(*args, **kwargs))
+
+    return wrapper
 
 
 @click.group(name="bbblb", context_settings={"show_default": True})
@@ -26,7 +38,7 @@ def main(config_file, config):
     for kv in config:
         name, _, value = kv.partition("=")
         name = name.upper()
-        if name not in config.options:
+        if name not in cfg._options:
             raise ConfigError(f"Unknown config parameter: {name}")
         env_name = f"BBBLB_{name}"
         if value:
