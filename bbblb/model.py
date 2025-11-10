@@ -435,7 +435,7 @@ class Meeting(Base):
     uuid: Mapped[UUID] = mapped_column(unique=True, nullable=False)
 
     tenant_fk: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False)
-    tenant: Mapped["Tenant"] = relationship()
+    tenant: Mapped["Tenant"] = relationship(lazy=False)
     server_fk: Mapped[int] = mapped_column(ForeignKey("servers.id"), nullable=False)
     server: Mapped["Server"] = relationship(lazy=False)
 
