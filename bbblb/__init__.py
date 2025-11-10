@@ -1,7 +1,7 @@
 import logging
 from .settings import config
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"
 VERSION = __version__.split(".", 2)
 VERSION[-1], _, BUILD = VERSION[-1].partition("-")
 
