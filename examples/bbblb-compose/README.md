@@ -36,7 +36,7 @@ Before we begin, ensure you have [Docker](https://docs.docker.com/engine/install
 4.  **Configure Caddy:**  
     Open `./caddy/Caddyfile` in an editor and change the domains Caddy should listen to. You may also want to have a look at the rest of the file and tweak it to your needs.
 
-## Starting the Services
+### Starting the Services
 
 After you followed all the previous steps, navigate to the directory containing the `docker-compose.yml`, then run:
 
@@ -50,7 +50,7 @@ docker compose up --build -d
 
 Since all containers are configured with `restart: unless-stopped` they will be restarted automatically after a reboot. 
 
-## Stopping the Services
+### Stopping the Services
 
 To stop all running containers, run:
 
@@ -65,3 +65,47 @@ docker compose down
 ```
 
 Don't worry, all your data lives in the `./data/` directory and will not be removed by docker. You can later start everything again if you need to. 
+
+
+## Managing Tenants and Servers
+
+Most admin and maintenance tasks are easier to do with the `bbblb` admin command line tool instead of the API.
+This tool must be run from within the container, though.
+It needs to be able to connect to the same database and access the same configuration and storage paths as your running BBBLB service.
+You can use the bundled `./bbblb.sh` script as a shortcut.
+
+### Add your first Tenant
+
+To create your first 'example' tenant, run:
+
+```bash
+./bbblb.sh tenant create --secret=SECRET example bbb.example.com
+```
+
+Replace `SECRET` with a suitable tenant secret, `example` with a short but meaningful tenant name, and  `bbb.example.com` with the primary domain of your BBBLB instance.
+
+Realms are used to assign API requests to the correct tenants.
+By default, this is done based on the `Host` header, which contains the hostname the tenant used to reach the API server.
+
+In this example we associate the 'example' tenant with the primary domain. You do not have to, though. Just make sure that each tenant uses a unique domain or subdomain to reach the API server, and the domain matches their configured realm.
+
+### Attach your first Server
+
+> :warning: Make sure to install the `./examples/post_publish_bbblb.rb` script on BBB servers *before* attaching them to your cluster, or recordings won't be transferred.
+
+To attach your first BBB server, run:
+
+```bash
+./bbblb.sh server create --secret=SECRET server1.example.com
+```
+
+Replace `SECRET` with the BBB server API secret and `server1.example.com` with the BBB server domain.
+
+New servers are disabled by default. Let's enable it so it can receive new meetings:
+
+```bash
+./bbblb.sh server enable server1.example.com
+```
+
+That's it. Your 'example' tenant should now be able to start and manage meetings in your cluster via BBBLB.
+
