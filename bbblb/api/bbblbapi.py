@@ -263,3 +263,123 @@ async def handle_recording_upload(request: Request):
         return JSONResponse(
             {"error": "Import failed", "message": str(exc)}, status_code=500
         )
+
+
+@api("v1/tenant", methods=["GET"])
+async def handle_tenants_list(request: Request):
+    auth = await AuthContext.from_request(request)
+    auth.ensure_scope("tenant:list")
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Tenant.select().order_by(model.Tenant.name)
+        tenants = (await session.execute(stmt)).scalars()
+        return {
+            "tenants": [
+                {"name": t.name, "realm": t.realm, "secret": t.secret} for t in tenants
+            ]
+        }
+
+
+@api("v1/tenant/{name}", methods=["POST"])
+async def handle_tenant_post(request: Request):
+    auth = await AuthContext.from_request(request)
+    tenant_name = request.path_params["name"]
+    body = await request.json()
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Tenant.select(name=tenant_name)
+        tenant = (await session.execute(stmt)).scalar_one_or_none()
+        if not tenant:
+            auth.ensure_scope("tenant:create")
+            tenant = model.Tenant(name=tenant_name)
+        else:
+            auth.ensure_scope("tenant:update")
+
+        try:
+            tenant.realm = body["realm"]
+            tenant.secret = body["secret"]
+        except KeyError as e:
+            raise ApiError(
+                400,
+                "Missing parameter",
+                f"Missing parameter in request body: {e.args[0]}",
+            )
+
+        session.add(tenant)
+        await session.commit()
+
+
+@api("v1/tenant/{name}/delete", methods=["POST"])
+async def handle_tenant_delete(request: Request):
+    auth = await AuthContext.from_request(request)
+    tenant_name = request.path_params["name"]
+    auth.ensure_scope("tenant:delete")
+
+    if auth.tenant and auth.tenant != tenant_name:
+        raise ApiError(401, "Access denied", "This API is protected")
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Tenant.select(name=tenant_name)
+        tenant = (await session.execute(stmt)).scalar_one_or_none()
+        if tenant:
+            await session.delete(tenant)
+            await session.commit()
+
+
+@api("v1/server", methods=["GET"])
+async def handle_server_list(request: Request):
+    auth = await AuthContext.from_request(request)
+    auth.ensure_scope("server:list")
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Server.select().order_by(model.Server.domain)
+        servers = (await session.execute(stmt)).scalars()
+        return {"servers": [{"domain": s.domain, "secret": s.secret} for s in servers]}
+
+
+@api("v1/server/{domain}", methods=["POST"])
+async def handle_server_post(request: Request):
+    auth = await AuthContext.from_request(request)
+    domain = request.path_params["domain"]
+    body = await request.json()
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Server.select(domain=domain)
+        server = (await session.execute(stmt)).scalar_one_or_none()
+        if not server:
+            auth.ensure_scope("server:create")
+            server = model.Server(domain=domain)
+        else:
+            auth.ensure_scope("server:update")
+
+        try:
+            server.secret = body["secret"]
+        except KeyError as e:
+            raise ApiError(
+                400,
+                "Missing parameter",
+                f"Missing parameter in request body: {e.args[0]}",
+            )
+
+        session.add(server)
+        await session.commit()
+
+
+@api("v1/server/{name}/enable", methods=["POST"])
+async def handle_server_enable(request: Request, enable=True):
+    auth = await AuthContext.from_request(request)
+    domain = request.path_params["domain"]
+    auth.ensure_scope("server:state")
+
+    async with model.AsyncSessionMaker() as session:
+        stmt = model.Server.select(domain=domain)
+        server = (await session.execute(stmt)).scalar_one_or_none()
+        if not server:
+            raise ApiError(404, "Unknown server", f"Server not known: {domain}")
+        server.enabled = True
+        await session.commit()
+
+
+@api("v1/server/{name}/disable", methods=["POST"])
+async def handle_server_disable(request: Request):
+    return await handle_server_enable(request, enable=False)
