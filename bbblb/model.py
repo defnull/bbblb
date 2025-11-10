@@ -424,10 +424,13 @@ class Server(Base):
 
 class Meeting(Base):
     __tablename__ = "meetings"
+    __table_args__ = (
+        UniqueConstraint("external_id", "tenant_fk", name="meeting_tenant_uc"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    #: The external meeting ID. Unscoped, as provided by the front-end.
-    external_id: Mapped[str] = mapped_column(unique=True, nullable=False)
+    #: The external meetingID. Unscoped, as provided by the front-end.
+    external_id: Mapped[str] = mapped_column(nullable=False)
     internal_id: Mapped[str] = mapped_column(unique=True, nullable=True)
     uuid: Mapped[UUID] = mapped_column(unique=True, nullable=False)
 
