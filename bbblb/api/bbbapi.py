@@ -81,7 +81,7 @@ async def require_tenant(request: Request):
         return typing.cast(model.Tenant, tenant)
 
     try:
-        realm = request.headers.get(config.TENANT_HEADER, "default")
+        realm = request.headers.get(config.TENANT_HEADER, "__NO_REALM__")
         request.state.tenant = tenant = await model.Tenant.get(realm=realm)
         return tenant
     except model.NoResultFound:
