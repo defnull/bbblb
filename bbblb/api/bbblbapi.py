@@ -55,9 +55,30 @@ class ApiError(RuntimeError):
         )
 
 
+TENANT_SCOPE = "signed:tenant"  # The only scope that tenant-tokens have
+SERVER_SCOPE = "signed:server"  # The only scope that server-tokens have
+_API_SCOPES = {
+    "rec": ("list", "upload", "update", "delete"),
+    "tenant": ("list", "create", "update", "delete", "secret"),
+    "server": ("list", "create", "update", "delete", "state"),
+}
+API_SCOPES = set(_API_SCOPES) | set(
+    f"{resource}:{action}"
+    for (resource, actions) in _API_SCOPES.items()
+    for action in actions
+)
+
+
 class AuthContext:
-    def __init__(self, claims):
+    def __init__(
+        self,
+        claims,
+        server: model.Server | None = None,
+        tenant: model.Tenant | None = None,
+    ):
         self.claims = claims
+        self.server = server
+        self.tenant = tenant
 
     @functools.cached_property
     def scopes(self):
@@ -94,15 +115,22 @@ class AuthContext:
 
             header = jwt.get_unverified_header(credentials)
             kid = header.get("kid")
-            if kid:
-                # TODO Cache this!
-                server = await model.Server.find(domain=kid)
+            if kid and kid.startswith("bbb:"):
+                server = await model.Server.find(domain=kid[4:])
                 if not server:
                     raise ApiError(401, "Access denied", "This API is protected")
                 payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
-                payload["scope"] = "bbb"
+                payload["scope"] = SERVER_SCOPE
                 payload["sub"] = server.domain
-                return AuthContext(payload)
+                return AuthContext(payload, server=server)
+            elif kid and kid.startswith("tenant:"):
+                tenant = await model.Tenant.find(name=kid[7:])
+                if not tenant:
+                    raise ApiError(401, "Access denied", "This API is protected")
+                payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"])
+                payload["scope"] = TENANT_SCOPE
+                payload["sub"] = tenant.name
+                return AuthContext(payload, tenant=tenant)
             else:
                 payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
                 return AuthContext(payload)
@@ -208,7 +236,7 @@ async def handle_callback_proxy(request: Request):
 @api("v1/recording/upload", methods=["POST"], name="bbblb:upload")
 async def handle_recording_upload(request: Request):
     auth = await AuthContext.from_request(request)
-    auth.ensure_scope("rec:upload", "bbb")
+    auth.ensure_scope("rec:upload", SERVER_SCOPE)
 
     ctype = request.headers["content-type"]
     if ctype != "application/x-tar":

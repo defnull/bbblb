@@ -11,7 +11,7 @@ described here.
 Most non-public BBBLB APIs are protected with JWT tokens that need to be signed
 by a trusted party and provided as an `Authorization: bearer <token>` header.
 
-There are in total three types of tokens:
+There are three types of tokens:
 
 * **API Tokens** are sigend with the BBBLB `{SECRET}` and allow admins or
   automation tools to manage and control BBBLB at runtime. They can be limited
@@ -23,12 +23,9 @@ There are in total three types of tokens:
   very specific actions, e.g. uploading recordings or signaling server state.
 
 You can create new *API tokens* with the command line interface.
-Call `bbblb maketoken --expire <sec> --tenant <name> <sub> <scope> [<scope> ...]` to
+Call `bbblb maketoken --expire <sec> <sub> <scope> [<scope> ...]` to
 generate and print a new token. The `sub` parameter should identify the token
 owner and can later be used to revoke tokens without waiting for them to expire.
-
-If a `--tenant` is associated with the token, it will be limited to resources
-owned by that tenant.
 
 The `scope` claims limit for what the token can be used for:
 
@@ -49,6 +46,9 @@ The `scope` claims limit for what the token can be used for:
   * `server:update` Update servers and server state.
   * `server:delete` Delete servers.
   * `server:state` Change server state (ONLINE / DRAIN / OFFLINE).
+
+Tenant- or Server-tokens can be created with the `--tenant` or `--server`
+parameters. The scopes are mostly ignored in that case.
 
 ### Protecting `endMeetingURL` webhooks
 
