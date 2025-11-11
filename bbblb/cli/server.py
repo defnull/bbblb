@@ -1,3 +1,7 @@
+import asyncio
+import time
+
+from sqlalchemy import func
 from bbblb import model, utils
 from bbblb.bbblib import BBBClient
 from bbblb.settings import config as cfg
@@ -66,8 +70,14 @@ async def enable(domain: str):
 @server.command()
 @click.argument("domain")
 @click.option("--nuke", help="End all meetings on this server.", is_flag=True)
+@click.option(
+    "--wait",
+    help="Wait for this many seconds for all meetings to end. A value of -1 waits forever",
+    type=int,
+    default=0,
+)
 @run_async
-async def disable(domain: str, nuke: bool):
+async def disable(domain: str, nuke: bool, wait: int):
     """Disable a server, so now new meetings are created on it."""
     await model.init_engine(cfg.DB)
     async with model.AsyncSessionMaker() as session:
@@ -87,6 +97,38 @@ async def disable(domain: str, nuke: bool):
             server.enabled = False
             await session.commit()
             click.echo(f"Server {domain!r} disabled")
+
+    if wait:
+        if wait < 0:
+            wait = 60 * 60 * 24 * 356
+
+        maxwait = time.time() + wait
+        interval = 5.0
+        last_count = 0
+
+        while True:
+            async with model.AsyncSessionMaker() as session:
+                stmt = (
+                    model.Meeting.select(model.Meeting.server == server)
+                    .with_only_columns(func.count())
+                    .order_by(None)
+                )
+                count = (await session.execute(stmt)).scalar()
+
+            if count == 0:
+                click.echo("No meetings left on server")
+                return
+
+            if time.time() + interval < maxwait:
+                raise RuntimeError(
+                    f"Server not empty: There are still {count} meetings running"
+                )
+
+            if last_count != count:
+                click.echo(f"Waiting for {count} meetings to end")
+
+            last_count = count
+            await asyncio.sleep(interval)
 
 
 async def _end_meeting(meeting: model.Meeting):
