@@ -10,6 +10,7 @@ import socket
 import typing
 import uuid
 from uuid import UUID
+import sqlalchemy
 from sqlalchemy.ext.asyncio import create_async_engine
 from contextlib import asynccontextmanager
 
@@ -77,6 +78,22 @@ async def init_engine(db: str, echo=False):
         AsyncSessionMaker,
         scopefunc=get_db_scope_id,
     )
+
+    if "postgres" in async_engine.url.drivername:
+        dbname = async_engine.url.database
+        tmp_engine = create_async_engine(
+            async_engine.url._replace(database="postgres"), isolation_level="AUTOCOMMIT"
+        )
+        async with tmp_engine.connect() as conn:
+            result = await conn.execute(
+                sqlalchemy.text("SELECT datname FROM pg_database")
+            )
+            if dbname not in [row[0] for row in result]:
+                LOG.info("Database not found, trying to create it: {dbname}")
+                await conn.execute(
+                    sqlalchemy.text(f"CREATE DATABASE {dbname} ENCODING 'utf-8'")
+                )
+        await tmp_engine.dispose()
 
     async with async_engine.begin() as conn:
         # Creating tables is not transactional in some databases, so we just try
