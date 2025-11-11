@@ -278,10 +278,9 @@ async def handle_create(request: Request):
 
     if not meeting:
         # Find suitable server
-        try:
-            stmt = model.Server.select_available(tenant)
-            server = (await model.ScopedSession.execute(stmt)).scalar_one()
-        except model.NoResultFound:
+        stmt = model.Server.select_available(tenant).limit(1)
+        server = (await model.ScopedSession.execute(stmt)).scalars().first()
+        if not server:
             raise bbblib.make_error("internalError", "No suitable servers available.")
 
         # Try to create the meeting
