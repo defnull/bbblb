@@ -51,19 +51,19 @@ class BBBResponse:
         json: dict[str, typing.Any] | None = None,
         status_code=200,
     ):
-        assert xml or json
+        assert xml is not None or json is not None
         self._xml = xml
         self._json = json
         self.status_code = status_code
 
     @cached_property
     def xml(self) -> ETree:
-        assert self._xml
+        assert self._xml is not None
         return self._xml
 
     @cached_property
     def json(self) -> dict[str, typing.Any]:
-        assert self._json
+        assert self._json is not None
         return self._json
 
     @cached_property
@@ -72,20 +72,14 @@ class BBBResponse:
 
     def find(self, query, default: str | None = None):
         val = "___MISSING___"
-        if self._xml:
+        if self._xml is not None:
             val = self._xml.findtext(query, "___MISSING___")
-        elif self._json:
+        elif self._json is not None:
             val = self._json.get(query, "___MISSING___")
         return default if val == "___MISSING___" else val
 
     def __getattr__(self, name: str):
-        assert self._xml or self._json
-
-        val = "___MISSING___"
-        if self._xml:
-            val = self.find(name, "___MISSING___")
-        elif self._json:
-            val = self._json.get(name, "___MISSING___")
+        val = self.find(name, "___MISSING___")
         if val == "___MISSING___":
             raise AttributeError(name)
         return val
