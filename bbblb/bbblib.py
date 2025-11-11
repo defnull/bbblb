@@ -185,7 +185,7 @@ class BBBClient:
                 if response.status not in (200,):
                     return make_error(
                         "internalError",
-                        "Unexpected response status: {response.status}",
+                        f"Unexpected response status: {response.status}",
                         response.status,
                     )
                 if expect_json and response.content_type == "application/json":
