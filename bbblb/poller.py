@@ -98,6 +98,7 @@ class Poller:
 
         LOG.info(f"Polling {server.api_base} (state={server.health.name})")
         running_ids = set()
+        users = 0
         load = 0.0
         success = True
         try:
@@ -114,6 +115,7 @@ class Poller:
                 running_ids.add(meeting_id)
 
                 load += config.LOADFACTOR_MEETING
+                users += int(mxml.findtext("participantCount"))
                 load += int(mxml.findtext("participantCount")) * config.LOADFACTOR_SIZE
                 load += (
                     int(mxml.findtext("voiceParticipantCount"))
@@ -145,8 +147,8 @@ class Poller:
 
         if success:
             server.load = load
-            LOG.warning(
-                f"Server {server.domain} has {len(running_ids)} meetings and a load of {load}"
+            LOG.info(
+                f"[{server.domain}] meetings={len(running_ids)} users={users} load={load}"
             )
 
             if server.health == model.ServerHealth.AVAILABLE:
