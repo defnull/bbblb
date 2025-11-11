@@ -127,13 +127,6 @@ class BBBClient:
         self.secret = secret
         self.session = None
 
-    async def get_session(self):
-        # Hint: Closing a session does nothing if it does not own the connector,
-        # so we do not need to close it.
-        if not self.session or self.session.closed:
-            self.session = await get_client()
-        return self.session
-
     def encode_uri(self, endpoint: str, query: dict[str, str]):
         return urljoin(self.base_url, endpoint) + "?" + self.sign_query(endpoint, query)
 
@@ -183,10 +176,12 @@ class BBBClient:
 
         LOG.debug(f"Request: {url}")
         try:
-            session = await self.get_session()
-            async with session.request(
-                method, url, data=body, headers=headers, timeout=TIMEOUT
-            ) as response:
+            async with (
+                await get_client() as client,
+                client.request(
+                    method, url, data=body, headers=headers, timeout=TIMEOUT
+                ) as response,
+            ):
                 if response.status not in (200,):
                     return make_error(
                         "internalError",
