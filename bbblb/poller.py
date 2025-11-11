@@ -104,6 +104,7 @@ class Poller:
         try:
             bbb = BBBClient(server.api_base, server.secret)
             result = await bbb.action("getMeetings")
+            result.raise_on_error()
 
             for mxml in result.xml.iterfind("meetings/meeting"):
                 endTime = int(mxml.findtext("endTime"))
