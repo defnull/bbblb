@@ -73,7 +73,7 @@ class BBBResponse:
     def find(self, query, default: str | None = None):
         val = "___MISSING___"
         if self._xml:
-            val = self.findtext(query, "___MISSING___")
+            val = self._xml.findtext(query, "___MISSING___")
         elif self._json:
             val = self._json.get(query, "___MISSING___")
         return default if val == "___MISSING___" else val
