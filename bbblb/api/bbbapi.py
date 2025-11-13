@@ -212,7 +212,7 @@ async def _instrument_callbacks(
     # Remember and remove all variants of the recording-ready callbacks so we
     # can fire them later, after the recordings were imported and are actually
     # available.
-    for meta in params:
+    for meta in list(params):
         if not (meta.startswith("meta_") and meta.endswith("-recording-ready-url")):
             continue
         orig_url = params.pop(meta)
