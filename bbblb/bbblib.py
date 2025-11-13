@@ -70,6 +70,12 @@ class BBBResponse:
     def success(self):
         return self.find("returncode") == "SUCCESS"
 
+    @cached_property
+    def error(self):
+        if self.success:
+            return
+        return self.find("messageKey", "missingErrorKey")
+
     def find(self, query, default: str | None = None):
         val = "___MISSING___"
         if self._xml is not None:
