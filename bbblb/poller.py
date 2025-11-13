@@ -60,9 +60,10 @@ class Poller:
                             LOG.warning("We lost our {lockname!r} lock!?")
                             break
 
-                        async with model.scope() as session:
+                        async with model.AsyncSessionMaker() as session:
                             result = await session.execute(model.Server.select())
                             servers = result.scalars()
+
                         tasks = [self.poll_one(server.id) for server in servers]
                         await asyncio.gather(*tasks)
 
@@ -85,11 +86,13 @@ class Poller:
                 await model.Lock.try_release(self.lockname)
             self.shutdown_complete.set()
 
-    @model.transactional(isolated=True, autocommit=True)
     async def poll_one(self, server_id):
-        server = await model.Server.get(id=server_id)
-        known = await server.awaitable_attrs.meetings
-        meetings = {meeting.internal_id: meeting for meeting in known}
+        async with model.AsyncSessionMaker() as session:
+            server = (
+                await session.execute(model.Server.select(id=server_id))
+            ).scalar_one()
+            meetings = await server.awaitable_attrs.meetings
+            meetings = {meeting.internal_id: meeting for meeting in meetings}
 
         if not server.enabled:
             if not meetings:
@@ -136,49 +139,65 @@ class Poller:
                     LOG.warning(f"Meeting on server that is not in DB: {meeting_id}")
                     continue  # Ignore unknown meetings
 
-            for meeting in meetings.values():
-                if meeting.internal_id in running_ids:
-                    continue
-                LOG.debug("Meeting not found on server, probably ended: {meeting_id}")
-                await meeting.delete()
-
         except BBBError as err:
             LOG.warning(f"Server {server.domain} returned an error: {err}")
             success = False
 
-        if success:
-            server.load = load
-            LOG.info(
-                f"[{server.domain}] meetings={len(running_ids)} users={users} load={load}"
+        async with model.AsyncSessionMaker() as session:
+            # Forget meetings not found on server
+            forget_ids = set(
+                meeting.internal_id
+                for meeting in meetings.values()
+                if meeting.internal_id not in running_ids
             )
+            if forget_ids:
+                LOG.debug(
+                    f"{len(forget_ids)} meetings not found on server, ending them all"
+                )
+                await session.execute(
+                    model.delete(model.Meeting).where(
+                        model.Meeting.internal_id.in_(forget_ids)
+                    )
+                )
 
-            if server.health == model.ServerHealth.AVAILABLE:
-                pass  # Already healthy
-            elif server.recover < config.POLL_RECOVER:
-                # Server is still recovering
-                server.recover += 1
-                server.health = model.ServerHealth.UNSTABLE
-                LOG.warning(
-                    f"Server {server.domain} is UNSTABLE and recovering ({server.recover}/{config.POLL_RECOVER})"
+            # Update server laod and state
+            await session.refresh(server, with_for_update=True)
+
+            if success:
+                server.load = load
+                LOG.info(
+                    f"[{server.domain}] meetings={len(running_ids)} users={users} load={load}"
                 )
+
+                if server.health == model.ServerHealth.AVAILABLE:
+                    pass  # Already healthy
+                elif server.recover < config.POLL_RECOVER:
+                    # Server is still recovering
+                    server.recover += 1
+                    server.health = model.ServerHealth.UNSTABLE
+                    LOG.warning(
+                        f"Server {server.domain} is UNSTABLE and recovering ({server.recover}/{config.POLL_RECOVER})"
+                    )
+                else:
+                    # Server fully recovered
+                    server.errors = 0
+                    server.recover = 0
+                    server.health = model.ServerHealth.AVAILABLE
+                    LOG.info(f"Server {server.domain} is ONLINE")
             else:
-                # Server fully recovered
-                server.errors = 0
-                server.recover = 0
-                server.health = model.ServerHealth.AVAILABLE
-                LOG.info(f"Server {server.domain} is ONLINE")
-        else:
-            if server.health == model.ServerHealth.OFFLINE:
-                pass  # Already dead
-            elif server.errors < config.POLL_FAIL:
-                # Server is failing
-                server.recover = 0  # Reset recovery counter
-                server.errors += 1
-                server.health = model.ServerHealth.UNSTABLE
-                LOG.warning(
-                    f"Server {server.domain} is UNSTABLE and failing ({server.errors}/{config.POLL_FAIL})"
-                )
-            else:
-                # Server failed too often, give up
-                server.health = model.ServerHealth.OFFLINE
-                LOG.warning(f"Server {server.domain} is OFFLINE")
+                if server.health == model.ServerHealth.OFFLINE:
+                    pass  # Already dead
+                elif server.errors < config.POLL_FAIL:
+                    # Server is failing
+                    server.recover = 0  # Reset recovery counter
+                    server.errors += 1
+                    server.health = model.ServerHealth.UNSTABLE
+                    LOG.warning(
+                        f"Server {server.domain} is UNSTABLE and failing ({server.errors}/{config.POLL_FAIL})"
+                    )
+                else:
+                    # Server failed too often, give up
+                    server.health = model.ServerHealth.OFFLINE
+                    LOG.warning(f"Server {server.domain} is OFFLINE")
+
+            await session.commit()
