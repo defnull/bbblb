@@ -17,12 +17,12 @@ def add_scope(original_id: str, scope: str):
     return f"{original_id}-bbblb-{scope}"
 
 
-def extract_scope(scoped_id: str):
+def extract_scope(scoped_id: str) -> tuple[str, str]:
     original, _, scope = scoped_id.rpartition("-bbblb-")
     return original, scope
 
 
-def remove_scope(scoped_id: str):
+def remove_scope(scoped_id: str) -> str:
     return extract_scope(scoped_id)[0]
 
 

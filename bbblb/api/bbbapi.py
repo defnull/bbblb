@@ -492,7 +492,7 @@ async def handle_get_meetings(request: Request):
             if meeting_xml.findtext("metadata/bbblb-tenant") != tenant.name:
                 continue
             scoped_id = meeting_xml.findtext("meetingID")
-            unscoped_id, scope = utils.remove_scope(scoped_id)
+            unscoped_id, scope = utils.extract_scope(scoped_id)
             if scope != tenant.name:
                 continue
             xml_fix_meeting_id(meeting_xml, scoped_id, unscoped_id)
