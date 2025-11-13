@@ -39,7 +39,7 @@ def api(action: str, methods=["GET", "POST"]):
                 LOG.exception("Unhandled exception")
                 out = bbblib.make_error("internalError", repr(err), 500)
             if isinstance(out, bbblib.BBBResponse):
-                if out._xml:
+                if out._xml is not None:
                     out = to_xml(out.xml, out.status_code)
                 else:
                     out = JSONResponse(out.json, out.status_code)
