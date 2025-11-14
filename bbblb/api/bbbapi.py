@@ -6,7 +6,6 @@ import typing
 import uuid
 import lxml.etree
 import logging
-from sqlalchemy import update
 import sqlalchemy
 import sqlalchemy.orm
 from starlette.requests import Request
@@ -32,7 +31,8 @@ def api(action: str, methods=["GET", "POST"]):
         @functools.wraps(func)
         async def wrapper(request, *args, **kwargs):
             try:
-                out = await func(request)
+                async with ApiRequestContext(request) as ctx:
+                    out = await func(ctx)
             except BBBError as err:
                 out = err
             except Exception as err:
@@ -45,6 +45,8 @@ def api(action: str, methods=["GET", "POST"]):
                     out = JSONResponse(out.json, out.status_code)
             elif isinstance(out, ETree):
                 out = to_xml(out, 200)
+            elif isinstance(out, dict):
+                out = JSONResponse(out, 200)
             elif isinstance(out, dict):
                 out = JSONResponse(out, 200)
             return out
@@ -75,89 +77,129 @@ def xml_fix_meeting_id(node: ETree, search: str, replace: str):
     return node
 
 
-async def require_tenant(request: Request):
-    tenant = getattr(request.state, "tenant", None)
-    if tenant:
-        return typing.cast(model.Tenant, tenant)
+class ApiRequestContext:
+    def __init__(self, request: Request):
+        self.request = request
 
-    try:
-        realm = request.headers.get(config.TENANT_HEADER, "__NO_REALM__")
-        request.state.tenant = tenant = await model.Tenant.get(realm=realm)
-        return tenant
-    except model.NoResultFound:
-        raise bbblib.make_error(
-            "checksumError", "Unknown tenant, unable to perform checksum security check"
-        )
+    async def __aenter__(self):
+        return self
 
+    async def __aexit__(self, *a, **ka):
+        if "session" in self.__dict__:
+            await self.session.close()
+        return self
 
-async def require_meeting(tenant: model.Tenant, meeting_id: str):
-    try:
-        stmt = model.Meeting.select(
-            model.Meeting.tenant == tenant, model.Meeting.external_id == meeting_id
-        )
-        result = await model.ScopedSession.execute(stmt)
-        return result.scalar_one()
-    except model.NoResultFound:
-        raise bbblib.make_error(
-            "notFound",
-            "We could not find a meeting with that meeting ID - perhaps the meeting is not yet running?",
-        )
+    @functools.cached_property
+    def session(self):
+        """A request specific AsyncSession object.
+
+        The session is closed at the end of the request. It can also be
+        used in an async-with statement to ensure the session is reset at
+        the end of a code secion, or you can call reset() explicitly to
+        end any transactions and free any DB handles mid-request.
+        """
+        return model.new_session()
 
 
-async def require_bbb_query(
-    request: Request, tenant: model.Tenant, allow_query_in_body=True
-):
-    """Return BBB API query parameters with the checksum verified and removed."""
-    action = request.url.path.split("/")[-1]
-    query_str = request.url.query
+class BBBApiRequest(ApiRequestContext):
+    _tenant: model.Tenant | None = None
+    _meeting: model.Meeting | None = None
+    _query: dict[str, str] | None = None
+    _body: bytearray | None = None
 
-    # Some APIs allow passing query parameters in the request body. While the
-    # API docs are not clear, we assume here that parameters cannot be in both
-    # places. We only parse the request body if the query string is empty.
-    if (
-        not query_str
-        and allow_query_in_body
-        and request.method == "POST"
-        and request.headers.get("Content-Type") == "application/x-www-form-urlencoded"
-    ):
+    async def require_tenant(self):
+        if self._tenant:
+            return self._tenant
         try:
-            query_str = (await read_body(request)).decode("UTF-8")
-        except bbblib.make_error:
-            # Unable to read enough to make a check, so technicalls this is a checksumError
+            realm = self.request.headers.get(config.TENANT_HEADER, "__NO_REALM__")
+            self._tenant = await model.Tenant.get(self.session, realm=realm)
+        except model.NoResultFound:
             raise bbblib.make_error(
-                "checksumError", "Request body too large, could not verify checksum"
+                "checksumError",
+                "Unknown tenant, unable to perform checksum security check",
+            )
+        return self._tenant
+
+    async def require_meeting(self):
+        if self._meeting:
+            return self._meeting
+        tenant = await self.require_tenant()
+        meetingID = await self.require_param("meetingID")
+        try:
+            self._meeting = await model.Meeting.get(
+                self.session,
+                model.Meeting.tenant == tenant,
+                sqlalchemy.or_(
+                    model.Meeting.internal_id == meetingID,
+                    model.Meeting.external_id == meetingID,
+                ),
+            )
+            return self._meeting
+        except model.NoResultFound:
+            raise bbblib.make_error(
+                "notFound",
+                "We could not find a meeting with that meeting ID - perhaps the meeting is not yet running?",
             )
 
-    query, _ = bbblib.verify_checksum_query(action, query_str, [tenant.secret])
-    return query
+    async def require_bbb_query(self, allow_query_in_body=True):
+        """Return BBB API query parameters with the checksum verified and removed."""
+        if self._query is not None:
+            return self._query
 
+        tenant = await self.require_tenant()
+        action = self.request.url.path.split("/")[-1]
+        query_str = self.request.url.query
 
-async def read_body(request: Request) -> bytes:
-    """Read the request body in a save (limited size) way"""
-    if request.method != "POST":
-        raise TypeError("Expected POST request")
-    form_body = b""
-    async for chunk in request.stream():
-        form_body += chunk
-        if len(form_body) > config.MAX_BODY:
-            raise bbblib.make_error("clientError", "Request body too large", 413)
-    return form_body
+        # Some APIs allow passing query parameters in the request body. While the
+        # API docs are not clear, we assume here that parameters cannot be in both
+        # places. We only parse the request body if the query string is empty.
+        if (
+            not query_str
+            and allow_query_in_body
+            and self.request.method == "POST"
+            and self.request.headers.get("Content-Type")
+            == "application/x-www-form-urlencoded"
+        ):
+            try:
+                query_str = (await self.read_body()).decode("UTF-8")
+            except bbblib.make_error:
+                # Unable to read enough to make a check, so technicalls this is a checksumError
+                raise bbblib.make_error(
+                    "checksumError", "Request body too large, could not verify checksum"
+                )
 
+        query, _ = bbblib.verify_checksum_query(action, query_str, [tenant.secret])
+        return query
 
-def require_param(
-    params: dict[str, str],
-    name: str,
-    default: R | None = None,
-    type: typing.Callable[[str], R] = str,
-) -> R:
-    """Get a parameter from a query mal and raise an appropriate error if it's missing."""
-    try:
-        return type(params[name])
-    except (KeyError, ValueError):
-        if default is not None:
-            return default
-        errorKey = f"missingParameter{name[0].upper()}{name[1:]}"
-        raise bbblib.make_error(errorKey, f"Missing parameter {name}.")
+    async def read_body(self) -> bytes:
+        """Read the request body in a save (limited size) way"""
+        if self._body is not None:
+            return self._body
+        if self.request.method != "POST":
+            raise TypeError("Expected POST request")
+        body = bytearray()
+        async for chunk in self.request.stream():
+            body += chunk
+            if len(body) > config.MAX_BODY:
+                raise bbblib.make_error("clientError", "Request body too large", 413)
+        self._body = body
+        return self._body
+
+    async def require_param(
+        self,
+        name: str,
+        default: R | None = None,
+        type: typing.Callable[[str], R] = str,
+    ) -> R:
+        """Get a parameter from a query mal and raise an appropriate error if it's missing."""
+        query = await self.require_bbb_query()
+        try:
+            return type(query[name])
+        except (KeyError, ValueError):
+            if default is not None:
+                return default
+            errorKey = f"missingParameter{name[0].upper()}{name[1:]}"
+            raise bbblib.make_error(errorKey, f"Missing ir invalid parameter {name}.")
 
 
 ##
@@ -166,7 +208,7 @@ def require_param(
 
 
 @api("")
-async def handle_index(request: Request):
+async def handle_index(ctx: BBBApiRequest):
     return XML.response(
         XML.returncode("SUCCESS"),
         XML.version("2.0"),
@@ -179,15 +221,15 @@ async def handle_index(request: Request):
 ##
 
 
-async def forget_meeting(meeting: model.Meeting):
+async def forget_meeting(session: model.AsyncSession, meeting: model.Meeting):
     """Forget about a meeting and assume it does not exist (anymore)"""
     # TODO: We may want to re-calculate server load here?
     # Do not fire callbacks, they were already triggered by handle_bbblb_callback
-    await model.ScopedSession.delete(meeting)
+    await session.delete(meeting)
 
 
-async def _instrument_callbacks(
-    request: Request, params: dict[str, str], meeting: model.Meeting, is_new: bool
+async def _intercept_callbacks(
+    cxt: BBBApiRequest, params: dict[str, str], meeting: model.Meeting, is_new: bool
 ):
     callbacks = []
     # Replace "meetingEndedURL" with our own callback, and remember the original
@@ -206,7 +248,7 @@ async def _instrument_callbacks(
     # No signed payload, so we sign the URL instead.
     sig = f"bbblb:callback:end:{meeting.uuid}".encode("ASCII")
     sig = hmac.digest(config.SECRET.encode("UTF8"), sig, hashlib.sha256).hex()
-    url = request.url_for("bbblb:callback_end", uuid=str(meeting.uuid), sig=sig)
+    url = cxt.request.url_for("bbblb:callback_end", uuid=str(meeting.uuid), sig=sig)
     params["meetingEndedURL"] = str(url)
 
     # Remember and remove all variants of the recording-ready callbacks so we
@@ -244,7 +286,7 @@ async def _instrument_callbacks(
                         forward=orig_url,
                     )
                 )
-            url = request.url_for(
+            url = cxt.request.url_for(
                 "bbblb:callback_proxy",
                 uuid=meeting.uuid,
                 type=typename,
@@ -255,14 +297,16 @@ async def _instrument_callbacks(
 
 
 @api("create")
-@model.transactional(autocommit=True)
-async def handle_create(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    require_param(params, "name")  # Just check
+async def handle_create(ctx: BBBApiRequest):
+    # Phase one: Fetch an existing meeting, or create one in our own database
+    # and assign a server, so the next create call will use the same server.
 
+    tenant = await ctx.require_tenant()
+    params = await ctx.require_bbb_query()
+    unscoped_id = await ctx.require_param("meetingID")
     scoped_id = utils.add_scope(unscoped_id, tenant.name)
+    await ctx.require_param("name")  # Just check
+
     if len(scoped_id) > utils.MAX_MEETING_ID_LEN:
         raise bbblib.make_error(
             "sizeError",
@@ -271,65 +315,73 @@ async def handle_create(request: Request):
         )
 
     # Fetch existing meeting, if present
-    session = model.ScopedSession()
     select_meeting = model.Meeting.select(external_id=unscoped_id, tenant=tenant)
-    meeting = (await session.execute(select_meeting)).scalar_one_or_none()
+    meeting = (await ctx.session.execute(select_meeting)).scalar_one_or_none()
     meeting_created = False
+    callbacks = []
 
     if not meeting:
-        # Find suitable server
-        stmt = model.Server.select_available(tenant).limit(1)
-        server = (await model.ScopedSession.execute(stmt)).scalars().first()
+        # Find best server for new meetings
+        stmt = model.Server.select_best(tenant).with_for_update()
+        server = (await ctx.session.execute(stmt)).one_or_none()
         if not server:
             raise bbblib.make_error("internalError", "No suitable servers available.")
 
+        # Increase server load NOW (as fast as possible)
+        load = config.LOADFACTOR_INITIAL + config.LOADFACTOR_MEETING
+        await ctx.session.execute(server.increment_load_stmt(load))
+
         # Try to create the meeting
+        # Note: This commits the session as a side-effect
         meeting, meeting_created = await model.get_or_create(
-            session,
+            ctx.session,
             select_meeting,
             lambda: model.Meeting(
                 uuid=uuid.uuid4(), external_id=unscoped_id, server=server, tenant=tenant
             ),
         )
 
-    # Add or replace create parameters
-    params["meetingID"] = scoped_id
-    params["meta_bbblb-uuid"] = str(meeting.uuid)
-    params["meta_bbblb-origin"] = config.DOMAIN
-    params["meta_bbblb-tenant"] = meeting.tenant.name
-    params["meta_bbblb-server"] = meeting.server.domain
+        # Add or replace create parameters
+        params["meetingID"] = scoped_id
+        params["meta_bbblb-uuid"] = str(meeting.uuid)
+        params["meta_bbblb-origin"] = config.DOMAIN
+        params["meta_bbblb-tenant"] = meeting.tenant.name
+        params["meta_bbblb-server"] = meeting.server.domain
 
-    # Fix all callback parameters and get a list of (not yet added) callbacks.
-    callbacks = await _instrument_callbacks(
-        request, params, meeting, is_new=meeting_created
-    )
+        # Fix all callback parameters and get a list of (not yet persisted) callbacks.
+        callbacks.extend(
+            await _intercept_callbacks(ctx, params, meeting, is_new=meeting_created)
+        )
 
-    # Increase server load as fast as possible for new meetings and add callbacks
-    if meeting_created:
-        load = config.LOADFACTOR_INITIAL + config.LOADFACTOR_MEETING
-        meeting.server.load = model.Server.load + load
-        if callbacks:
-            session.add_all(callbacks)
-        await session.commit()
+        # Persist new callbacks, if any
+        if meeting_created and callbacks:
+            ctx.session.add_all(callbacks)
+            await ctx.session.commit()
 
-    # Now actually try to create the meeting on the back-end server
+    # Phase two: At this point the meeting exists in the database, but may not
+    # yet have an internal_id. We now forward the call to the back-end and see
+    # what happens.
+
     try:
-        bbb = BBBClient(meeting.server.api_base, meeting.server.secret)
-        body, ctype = None, request.headers.get("Content-Type")
-        if ctype == "application/xml":
-            body = await read_body(request)
+        await ctx.session.close()  # Give connection back to pool
 
+        # Create meeting on back-end
+        bbb = BBBClient(meeting.server.api_base, meeting.server.secret)
+        body, ctype = None, ctx.request.headers.get("Content-Type")
+        if ctype == "application/xml":
+            body = await ctx.read_body()
         upstream = await bbb.action("create", params, body=body, content_type=ctype)
         upstream.raise_on_error()
 
+        # Success! Update meeting info if it's a new meeting
         if meeting_created:
             LOG.info(f"Created {meeting} on {meeting.server}")
-            await session.execute(
-                update(model.Meeting)
-                .where(model.Meeting.id == meeting.id)
-                .values(internal_id=upstream.internalMeetingID)
+            await ctx.session.execute(
+                model.Meeting.update(model.Meeting.id == meeting.id).values(
+                    internal_id=upstream.internalMeetingID
+                )
             )
-            await session.commit()
+            await ctx.session.commit()
 
         xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
         return upstream
@@ -338,23 +390,24 @@ async def handle_create(request: Request):
         if meeting_created:
             LOG.exception(f"Failed to create {meeting} on {meeting.server}")
             for cb in callbacks:
-                await session.delete(cb)
-            await forget_meeting(meeting)
-            await session.commit()
+                await ctx.session.delete(cb)
+            await forget_meeting(ctx.session, meeting)
+            await ctx.session.commit()
         raise
 
 
 @api("join", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_join(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
+async def handle_join(ctx: BBBApiRequest):
+    tenant = await ctx.require_tenant()
+    params = await ctx.require_bbb_query()
+    unscoped_id = await ctx.require_param("meetingID")
     scoped_id = utils.add_scope(unscoped_id, tenant.name)
-    meeting = await require_meeting(tenant, unscoped_id)
+    meeting = await ctx.require_meeting()
     server = await meeting.awaitable_attrs.server
 
-    server.load += config.LOADFACTOR_SIZE
+    await ctx.session.execute(server.increment_load_stmt(config.LOADFACTOR_SIZE))
+    await ctx.session.commit()
+    await ctx.session.close()  # Give connection back to pool
 
     bbb = BBBClient(server.api_base, server.secret)
     params["meetingID"] = scoped_id
@@ -363,17 +416,17 @@ async def handle_join(request: Request):
 
 
 @api("end")
-@model.transactional(autocommit=True)
-async def handle_end(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    scoped_id = utils.add_scope(unscoped_id, tenant.name)
-    meeting = await require_meeting(tenant, unscoped_id)
-    server = await meeting.awaitable_attrs.server
-
-    # Always end the meeting if requested
-    await forget_meeting(meeting)
+async def handle_end(ctx: BBBApiRequest):
+    async with ctx.session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        unscoped_id = await ctx.require_param("meetingID")
+        scoped_id = utils.add_scope(unscoped_id, tenant.name)
+        meeting = await ctx.require_meeting()
+        server = await meeting.awaitable_attrs.server
+        # Always end the meeting if requested
+        await forget_meeting(ctx.session, meeting)
+        await ctx.session.commit()
 
     # Now try to actually end it in the backend.
     bbb = BBBClient(server.api_base, server.secret)
@@ -386,29 +439,30 @@ async def handle_end(request: Request):
 
 
 @api("sendChatMessage", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_send_chat_message(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    scoped_id = utils.add_scope(unscoped_id, tenant.name)
-    meeting = await require_meeting(tenant, scoped_id)
-    server = await meeting.awaitable_attrs.server
+async def handle_send_chat_message(ctx: BBBApiRequest):
+    async with ctx.session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        unscoped_id = await ctx.require_param("meetingID")
+        scoped_id = utils.add_scope(unscoped_id, tenant.name)
+        meeting = await ctx.require_meeting()
+        server = await meeting.awaitable_attrs.server
 
     bbb = BBBClient(server.api_base, server.secret)
     params["meetingID"] = scoped_id
     upstream = await bbb.action("sendChatMessage", params)
 
     if upstream.error == "notFound":
-        await forget_meeting(meeting)
+        async with ctx.session:
+            await forget_meeting(ctx.session, meeting)
+            await ctx.session.commit()
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
 
 
 @api("getJoinUrl", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_get_join_url(request: Request):
+async def handle_get_join_url(ctx: BBBApiRequest):
     # Cannot be implemmented in a load-balancer:
     # https://github.com/bigbluebutton/bigbluebutton/issues/24212
     raise bbblib.make_error(
@@ -417,17 +471,19 @@ async def handle_get_join_url(request: Request):
 
 
 @api("insertDocument", methods=["POST"])
-@model.transactional(autocommit=True)
-async def handle_insert_document(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    meeting = await require_meeting(tenant, unscoped_id)
-    server = await meeting.awaitable_attrs.server
+async def handle_insert_document(ctx: BBBApiRequest):
+    async with ctx.session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        unscoped_id = await ctx.require_param("meetingID")
+        scoped_id = utils.add_scope(unscoped_id, tenant.name)
+        meeting = await ctx.require_meeting()
+        server = await meeting.awaitable_attrs.server
 
     bbb = BBBClient(server.api_base, server.secret)
-    ctype = request.headers.get("Content-Type")
-    stream = request.stream()
+    params["meetingID"] = scoped_id
+    ctype = ctx.request.headers.get("Content-Type")
+    stream = ctx.request.stream()
     upstream = await bbb.action(
         "insertDocument", params, body=stream, content_type=ctype, expect_json=True
     )
@@ -436,49 +492,54 @@ async def handle_insert_document(request: Request):
 
 
 @api("isMeetingRunning")
-@model.transactional(autocommit=True)
-async def handle_is_meeting_running(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    scoped_id = utils.add_scope(unscoped_id, tenant.name)
+async def handle_is_meeting_running(ctx: BBBApiRequest):
+    async with ctx.session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        unscoped_id = await ctx.require_param("meetingID")
+        scoped_id = utils.add_scope(unscoped_id, tenant.name)
 
-    try:
-        meeting = await require_meeting(tenant, unscoped_id)
-    except bbblib.BBBError:
-        return XML.response(
-            XML.returncode("SUCCESS"),
-            XML.running("false"),
-        )
+        try:
+            meeting = await ctx.require_meeting()
+        except bbblib.BBBError:
+            # Not an error
+            return bbblib.BBBResponse(
+                XML.response(
+                    XML.returncode("SUCCESS"),
+                    XML.running("false"),
+                )
+            )
 
-    server = await meeting.awaitable_attrs.server
+        server = await meeting.awaitable_attrs.server
+
     bbb = BBBClient(server.api_base, server.secret)
     params["meetingID"] = scoped_id
     upstream = await bbb.action("isMeetingRunning", params)
 
     if upstream.find("running") == "false":
-        await forget_meeting(meeting)
+        async with ctx.session as session:
+            await forget_meeting(session, meeting)
+            await session.commit()
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
 
 
 @api("getMeetings")
-@model.transactional(autocommit=True)
-async def handle_get_meetings(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
+async def handle_get_meetings(ctx: BBBApiRequest):
+    async with ctx.session as session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        # Find all servers that currently have matching meetings
+        stmt = (
+            model.Server.select(model.Meeting.tenant == tenant)
+            .join(model.Meeting)
+            .distinct()
+        )
+        servers = (await session.execute(stmt)).scalars()
 
     result_xml: ETree = XML.response(XML.returncode("SUCCESS"), XML.meetings())
     all_meetings = result_xml.find("meetings")
-
-    # Find all servers that currently have matching meetings
-    stmt = (
-        model.Server.select(model.Meeting.tenant == tenant)
-        .join(model.Meeting)
-        .distinct()
-    )
-    servers = (await model.ScopedSession.execute(stmt)).scalars()
 
     tasks: list[typing.Awaitable[bbblib.BBBResponse]] = []
     for server in servers:
@@ -502,21 +563,23 @@ async def handle_get_meetings(request: Request):
 
 
 @api("getMeetingInfo")
-@model.transactional(autocommit=True)
-async def handle_get_meeting_info(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    unscoped_id = require_param(params, "meetingID")
-    scoped_id = utils.add_scope(unscoped_id, tenant.name)
-    meeting = await require_meeting(tenant, unscoped_id)
-    server = await meeting.awaitable_attrs.server
+async def handle_get_meeting_info(ctx: BBBApiRequest):
+    async with ctx.session as session:
+        tenant = await ctx.require_tenant()
+        params = await ctx.require_bbb_query()
+        unscoped_id = await ctx.require_param("meetingID")
+        scoped_id = utils.add_scope(unscoped_id, tenant.name)
+        meeting = await ctx.require_meeting()
+        server = await meeting.awaitable_attrs.server
 
     bbb = BBBClient(server.api_base, server.secret)
     params["meetingID"] = scoped_id
     upstream = await bbb.action("getMeetingInfo", params)
 
     if upstream.error == "notFound":
-        await forget_meeting(meeting)
+        async with ctx.session as session:
+            await forget_meeting(session, meeting)
+            await session.commit()
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
@@ -528,16 +591,15 @@ async def handle_get_meeting_info(request: Request):
 
 
 @api("getRecordings", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_get_recordings(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    meeting_ids = require_param(params, "meetingID", "")
-    record_ids = require_param(params, "recordID", "")
-    state = require_param(params, "state", "")
+async def handle_get_recordings(ctx: BBBApiRequest):
+    tenant = await ctx.require_tenant()
+    params = await ctx.require_bbb_query()
+    meeting_ids = await ctx.require_param("meetingID", "")
+    record_ids = await ctx.require_param("recordID", "")
+    state = await ctx.require_param("state", "")
     meta = {key[5:]: value for key, value in params.items() if key.startswith("meta_")}
-    offset = require_param(params, "offset", -1, type=int)
-    limit = require_param(params, "limit", -1, type=int)
+    offset = await ctx.require_param("offset", -1, type=int)
+    limit = await ctx.require_param("limit", -1, type=int)
 
     stmt = model.Recording.select(tenant=tenant)
     stmt = stmt.order_by(model.Recording.id)
@@ -576,7 +638,7 @@ async def handle_get_recordings(request: Request):
     result_xml: ETree = XML.response(XML.returncode("SUCCESS"), XML.recordings())
     all_recordings = result_xml.find("recordings")
 
-    for rec in (await model.ScopedSession.execute(stmt)).scalars():
+    for rec in (await ctx.session.execute(stmt)).scalars():
         rec_xml: ETree = XML.recording(
             XML.recordID(rec.record_id),
             XML.meetingID(rec.external_id),
@@ -609,36 +671,48 @@ async def handle_get_recordings(request: Request):
 
 
 @api("publishRecordings", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_publish_recordings(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    record_ids = require_param(params, "recordID").split(",")
-    publish = require_param(params, "publish").lower() == "true"
-    new_state = (
-        model.RecordingState.PUBLISHED if publish else model.RecordingState.UNPUBLISHED
+async def handle_publish_recordings(ctx: BBBApiRequest):
+    importer = checked_cast(
+        recordings.RecordingImporter, ctx.request.app.state.importer
     )
-    importer = checked_cast(recordings.RecordingImporter, request.app.state.importer)
 
+    tenant = await ctx.require_tenant()
+    record_ids = (await ctx.require_param("recordID")).split(",")
+    publish = (await ctx.require_param("publish")).lower() == "true"
+
+    if publish:
+        action = importer.publish
+        new_state = model.RecordingState.PUBLISHED
+    else:
+        action = importer.unpublish
+        new_state = model.RecordingState.UNPUBLISHED
+
+    # Fetch and update-lock all recordings
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
     ).with_for_update()
-    recs = (await model.ScopedSession.execute(stmt)).scalars().all()
+    recs = (await ctx.session.execute(stmt)).scalars().all()
 
     if not recs:
         return bbblib.make_error("notFound", "Unknown recording")
 
+    # Publish or unpublish recordings
     for rec in recs:
         try:
-            await asyncio.to_thread(
-                importer.ensure_state, tenant.name, rec.record_id, published=publish
+            await asyncio.to_thread(action, tenant.name, rec.record_id)
+            await ctx.session.execute(
+                model.Recording.update(model.Recording.id == rec.id).values(
+                    state=new_state
+                )
             )
-            rec.state = new_state
         except FileNotFoundError:
             LOG.exception(
                 f"Recording {rec.record_id} found in database but not in storage!"
             )
             continue
+
+    # Persist changes (may be fewer than requested)
+    await ctx.session.commit()
 
     return XML.response(
         XML.returncode("SUCCESS"),
@@ -647,24 +721,25 @@ async def handle_publish_recordings(request: Request):
 
 
 @api("deleteRecordings", methods=["GET"])
-@model.transactional(autocommit=True)
-async def handle_delete_recordings(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    record_ids = require_param(params, "recordID").split(",")
+async def handle_delete_recordings(ctx: BBBApiRequest):
+    async with ctx.session:
+        tenant = await ctx.require_tenant()
+        record_ids = (await ctx.require_param("recordID")).split(",")
 
-    importer = checked_cast(recordings.RecordingImporter, request.app.state.importer)
-    stmt = model.Recording.select(
-        model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
-    ).with_for_update()
-    recs = (await model.ScopedSession.execute(stmt)).scalars().all()
+        # Delete all recordings from database
+        stmt = model.Recording.delete(
+            model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
+        )
+        await ctx.session.execute(stmt)
+        await ctx.session.commit()
 
-    for rec in recs:
-        await model.ScopedSession.delete(rec)
-        try:
-            await asyncio.to_thread(importer.delete, tenant.name, rec.record_id)
-        except FileNotFoundError:
-            continue  # already missing, which is fine in this case
+    # Actually delete records on disk, even if they did not exist in db.
+    # Do so in the background, as this may take some time.
+    importer = checked_cast(
+        recordings.RecordingImporter, ctx.request.app.state.importer
+    )
+    for record_id in record_ids:
+        asyncio.create_task(asyncio.to_thread(importer.delete, tenant.name, record_id))
 
     return XML.response(
         XML.returncode("SUCCESS"),
@@ -673,11 +748,11 @@ async def handle_delete_recordings(request: Request):
 
 
 @api("updateRecordings")
-@model.transactional(autocommit=True)
-async def handle_update_recordings(request: Request):
-    tenant = await require_tenant(request)
-    params = await require_bbb_query(request, tenant)
-    record_ids = require_param(params, "recordID").split(",")
+async def handle_update_recordings(ctx: BBBApiRequest):
+    tenant = await ctx.require_tenant()
+    params = await ctx.require_bbb_query()
+
+    record_ids = (await ctx.require_param("recordID")).split(",")
 
     meta = {
         key[5:]: value
@@ -688,7 +763,7 @@ async def handle_update_recordings(request: Request):
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
     ).with_for_update()
-    recs = (await model.ScopedSession.execute(stmt)).scalars().all()
+    recs = (await ctx.session.execute(stmt)).scalars().all()
 
     for rec in recs:
         for key, value in meta.items():
@@ -697,10 +772,11 @@ async def handle_update_recordings(request: Request):
             else:
                 rec.meta.pop(key, None)
 
+    await ctx.session.commit()
+
 
 @api("getRecordingTextTracks")
-@model.transactional(autocommit=True)
-async def handle_get_Recordings_text_tracks(request: Request):
+async def handle_get_Recordings_text_tracks(ctx: BBBApiRequest):
     # Can only be implemented for existing captions. TODO
     raise bbblib.make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
@@ -708,8 +784,7 @@ async def handle_get_Recordings_text_tracks(request: Request):
 
 
 @api("putRecordingTextTrack", methods=["POST"])
-@model.transactional(autocommit=True)
-async def handle_put_recordings_text_track(request: Request):
+async def handle_put_recordings_text_track(ctx: BBBApiRequest):
     # Requires significant work to implement, because caption processing
     # requires scripts that run on the BBB server and modify the original
     # recording, but:

@@ -181,50 +181,71 @@ class RecordingImporter:
         format = _sanity_pathname(format)
         return self.storage_dir / tenant / record_id / format
 
-    def ensure_state(self, tenant: str, record_id: str, published: bool):
-        """Publish or unpublish all formats of a recording.
-        Raise FileNotFoundError if the recording is not found."""
-        # format_dir  = storage_dir / tenant / record_id / format
-        # public_link = public_dir / format / record_id
+    def publish(self, tenant: str, record_id: str):
+        """Publish all available formats for a recording.
+
+        Return a list of format names, which may be empty if there were no
+        recordings that could be published."""
+
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
-        for format_dir in (self.storage_dir / tenant / record_id).iterdir():
-            if not format_dir.is_dir():
-                continue
-            if format_dir.name.endswith(".temp"):
-                continue
-
-            public_link = self.public_dir / format_dir.name / record_id
-
-            if published:
+        formats = []
+        try:
+            for format_dir in (self.storage_dir / tenant / record_id).iterdir():
+                if not format_dir.is_dir():
+                    continue
+                if format_dir.name.endswith(".temp"):
+                    continue
+                format_name = format_dir.name
+                formats.append(format_name)
+                symlink = self.public_dir / format_name / record_id
                 try:
-                    public_link.parent.mkdir(parents=True, exist_ok=True)
-                    public_link.symlink_to(
-                        format_dir.relative_to(public_link.parent, walk_up=True),
+                    if symlink.exists():
+                        continue
+                    symlink.parent.mkdir(parents=True, exist_ok=True)
+                    symlink.symlink_to(
+                        format_dir.relative_to(symlink.parent, walk_up=True),
                         target_is_directory=True,
                     )
-                    LOG.info(f"Published recording {record_id} ({tenant})")
+                    LOG.info(
+                        f"Published recording {format_name}/{record_id} ({tenant})"
+                    )
                 except FileExistsError:
-                    pass
-            elif public_link.is_symlink():
-                public_link.unlink(missing_ok=True)
-                LOG.info(f"Unpublished recording {record_id} ({tenant})")
+                    continue
+        except FileNotFoundError:
+            return []
+
+    def unpublish(self, tenant: str, record_id: str):
+        """Unpublish all formats for a given recording."""
+        tenant = _sanity_pathname(tenant)
+        record_id = _sanity_pathname(record_id)
+
+        for format_dir in self.public_dir.iterdir():
+            symlink = format_dir / record_id
+            if symlink.is_symlink():
+                symlink.unlink(missing_ok=True)
+                LOG.info(
+                    f"Unpublished recording {format_dir.name}/{record_id} ({tenant})"
+                )
 
     def delete(self, tenant: str, record_id: str):
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
-        store_path = self.storage_dir / tenant / record_id
-        deleted_path = self.storage_dir / tenant / record_id
-        if not store_path.exists():
-            return  # Nothing to delete
-        if deleted_path.exists():
-            raise RuntimeError(
-                "Cannot delete recording {record_id} ({tenant}), trashbin path already exists: {deleted_path}"
-            )
-        self.ensure_state(tenant, record_id, False)
 
-        shutil.move(store_path, deleted_path)
-        LOG.info(f"Deleted recording {record_id} ({tenant})")
+        # Unpublish all formats
+        self.unpublish(tenant, record_id)
+
+        # Move files to trash
+        store_path = self.storage_dir / tenant / record_id
+        deleted_path = (
+            self.storage_dir / tenant / f"{record_id}.{secrets.token_hex(8)}.deleted"
+        )
+
+        try:
+            shutil.move(store_path, deleted_path)
+            LOG.info(f"Deleted recording {record_id} ({tenant})")
+        except FileNotFoundError:
+            pass  #  Already deleted
 
 
 class RecordingImportTask:
@@ -426,10 +447,10 @@ class RecordingImportTask:
                 f"Invalid or missing tenant information: {tenant_name:r}"
             )
 
-        async with model.scope(autocommit=True) as session:
+        async with model.begin() as tx:
             try:
                 tenant = (
-                    await session.execute(model.Tenant.select(name=tenant_name))
+                    await tx.session.execute(model.Tenant.select(name=tenant_name))
                 ).scalar_one()
             except model.NoResultFound:
                 raise RecordingImportError(f"Unknown tenant: {tenant_name}")
@@ -453,9 +474,9 @@ class RecordingImportTask:
         self._breakpoint()
 
         # Get or create the Recording entry
-        async with model.scope(autocommit=True) as session:
+        async with model.begin() as tx:
             recording, recording_created = await model.get_or_create(
-                session,
+                tx.session,
                 model.Recording.select(record_id=record_id),
                 lambda: model.Recording(
                     tenant=tenant,
@@ -476,14 +497,12 @@ class RecordingImportTask:
         # already and the new format may need to be published before the DB
         # entry is created and the API returns it as an available format.
         if recording.state == model.RecordingState.PUBLISHED:
-            await self._in_pool(
-                self.importer.ensure_state, tenant.name, record_id, True
-            )
+            await self._in_pool(self.importer.publish, tenant.name, record_id)
 
         # Get or create the RecordingFormat entry
-        async with model.scope(autocommit=True) as session:
+        async with model.begin() as tx:
             format, format_created = await model.get_or_create(
-                session,
+                tx.session,
                 model.PlaybackFormat.select(recording=recording, format=format_name),
                 lambda: model.PlaybackFormat(
                     recording=recording,
@@ -501,13 +520,13 @@ class RecordingImportTask:
         # callback was triggered.
         if format_created:
             callbacks = []
-            async with model.scope(autocommit=True) as session:
+            async with model.begin() as tx:
                 uuid = meta.get("bbblb-uuid", None)
                 if uuid:
                     stmt = model.Callback.select(
                         uuid=uuid, type=model.CALLBACK_TYPE_REC
                     )
-                    callbacks = (await session.execute(stmt)).scalars()
+                    callbacks = (await tx.session.execute(stmt)).scalars()
             for callback in callbacks:
                 asyncio.create_task(
                     bbblib.fire_callback(

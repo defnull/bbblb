@@ -116,7 +116,8 @@ class AuthContext:
             header = jwt.get_unverified_header(credentials)
             kid = header.get("kid")
             if kid and kid.startswith("bbb:"):
-                server = await model.Server.find(domain=kid[4:])
+                async with model.new_session() as session:
+                    server = await model.Server.find(session, domain=kid[4:])
                 if not server:
                     raise ApiError(401, "Access denied", "This API is protected")
                 payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
@@ -124,7 +125,8 @@ class AuthContext:
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
             elif kid and kid.startswith("tenant:"):
-                tenant = await model.Tenant.find(name=kid[7:])
+                async with model.new_session() as session:
+                    tenant = await model.Tenant.find(session, name=kid[7:])
                 if not tenant:
                     raise ApiError(401, "Access denied", "This API is protected")
                 payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"])
@@ -145,7 +147,6 @@ class AuthContext:
 
 
 @api("v1/callback/{uuid}/end/{sig}", name="bbblb:callback_end")
-@model.transactional(autocommit=True)
 async def handle_callback_end(request: Request):
     """Handle the meetingEndedURL callback"""
 
@@ -163,31 +164,31 @@ async def handle_callback_end(request: Request):
         LOG.warning("Callback signature mismatch")
         return Response("Access denied, signature check failed", 401)
 
-    # Check if we have to notify a frontend
-    stmt = model.Callback.select(uuid=meeting_uuid, type=model.CALLBACK_TYPE_END)
-    callback = (await model.ScopedSession.execute(stmt)).scalar_one_or_none()
-    if callback:
-        if callback.forward:
-            # Fire and forget callback forward task
-            asyncio.ensure_future(
-                bbblib.trigger_callback(
-                    "GET", callback.forward, params=request.query_params
+    async with model.new_session() as session, session.begin():
+        # Check if we have to notify a frontend
+        stmt = model.Callback.select(uuid=meeting_uuid, type=model.CALLBACK_TYPE_END)
+        callback = (await session.execute(stmt)).scalar_one_or_none()
+        if callback:
+            if callback.forward:
+                # Fire and forget callback forward task
+                asyncio.ensure_future(
+                    bbblib.trigger_callback(
+                        "GET", callback.forward, params=request.query_params
+                    )
                 )
-            )
-        await model.ScopedSession.delete(callback)
+            await session.delete(callback)
 
-    # Mark meeting as ended, if still present
-    stmt = model.Meeting.select(uuid=meeting_uuid)
-    meeting = (await model.ScopedSession.execute(stmt)).scalar_one_or_none()
-    if meeting:
-        LOG.info("Meeting ended (callback): {meeting}")
-        await bbbapi.forget_meeting(meeting)
+        # Mark meeting as ended, if still present
+        stmt = model.Meeting.select(uuid=meeting_uuid)
+        meeting = (await session.execute(stmt)).scalar_one_or_none()
+        if meeting:
+            LOG.info("Meeting ended (callback): {meeting}")
+            await bbbapi.forget_meeting(session, meeting)
 
     return Response("OK", 200)
 
 
 @api("v1/callback/{uuid}/{type}", name="bbblb:callback_proxy")
-@model.transactional(autocommit=True)
 async def handle_callback_proxy(request: Request):
     try:
         meeting_uuid = request.path_params["uuid"]
@@ -208,22 +209,22 @@ async def handle_callback_proxy(request: Request):
     except (UnicodeDecodeError, KeyError, IndexError):
         return Response("Invalid request", 400)
 
-    stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
-    callbacks = (await model.ScopedSession.execute(stmt)).scalars().all()
-    if not callbacks:
-        # Strange, there should be at least one. Already fired?
-        return Response("OK", 200)
+    async with model.new_session() as session:
+        stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
+        callbacks = (await session.execute(stmt)).scalars().all()
+        if not callbacks:
+            # Strange, there should be at least one. Already fired?
+            return Response("OK", 200)
 
-    try:
-        origin = callbacks[0].server
-        payload = jwt.decode(payload, origin.secret, algorithms=["HS256"])
-    except BaseException:
-        return Response("Access denied, signature check failed", 401)
+        try:
+            origin = callbacks[0].server
+            payload = jwt.decode(payload, origin.secret, algorithms=["HS256"])
+        except BaseException:
+            return Response("Access denied, signature check failed", 401)
 
-    # Find and trigger callbacks
-
-    for callback in callbacks:
-        asyncio.create_task(bbblib.fire_callback(callback, payload, clear=True))
+        # Find and trigger callbacks
+        for callback in callbacks:
+            asyncio.create_task(bbblib.fire_callback(callback, payload, clear=True))
 
     return Response("OK", 200)
 
@@ -270,7 +271,7 @@ async def handle_tenants_list(request: Request):
     auth = await AuthContext.from_request(request)
     auth.ensure_scope("tenant:list")
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Tenant.select().order_by(model.Tenant.name)
         tenants = (await session.execute(stmt)).scalars()
         return {
@@ -286,7 +287,7 @@ async def handle_tenant_post(request: Request):
     tenant_name = request.path_params["name"]
     body = await request.json()
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Tenant.select(name=tenant_name)
         tenant = (await session.execute(stmt)).scalar_one_or_none()
         if not tenant:
@@ -318,7 +319,7 @@ async def handle_tenant_delete(request: Request):
     if auth.tenant and auth.tenant != tenant_name:
         raise ApiError(401, "Access denied", "This API is protected")
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Tenant.select(name=tenant_name)
         tenant = (await session.execute(stmt)).scalar_one_or_none()
         if tenant:
@@ -331,7 +332,7 @@ async def handle_server_list(request: Request):
     auth = await AuthContext.from_request(request)
     auth.ensure_scope("server:list")
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Server.select().order_by(model.Server.domain)
         servers = (await session.execute(stmt)).scalars()
         return {"servers": [{"domain": s.domain, "secret": s.secret} for s in servers]}
@@ -343,7 +344,7 @@ async def handle_server_post(request: Request):
     domain = request.path_params["domain"]
     body = await request.json()
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Server.select(domain=domain)
         server = (await session.execute(stmt)).scalar_one_or_none()
         if not server:
@@ -371,7 +372,7 @@ async def handle_server_enable(request: Request, enable=True):
     domain = request.path_params["domain"]
     auth.ensure_scope("server:state")
 
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         stmt = model.Server.select(domain=domain)
         server = (await session.execute(stmt)).scalar_one_or_none()
         if not server:

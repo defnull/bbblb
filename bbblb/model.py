@@ -1,18 +1,15 @@
 import asyncio
-import contextvars
+from contextlib import asynccontextmanager
 import enum
-import functools
 import logging
 import os
 import random
 import secrets
 import socket
 import typing
-import uuid
 from uuid import UUID
 import sqlalchemy
 from sqlalchemy.ext.asyncio import create_async_engine
-from contextlib import asynccontextmanager
 
 
 import datetime
@@ -20,6 +17,7 @@ from typing import List
 
 from sqlalchemy import (
     JSON,
+    ColumnExpressionArgument,
     DateTime,
     ForeignKey,
     Integer,
@@ -35,7 +33,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
-from sqlalchemy.ext.asyncio import async_scoped_session
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -55,12 +52,19 @@ def utcnow():
 
 
 async_engine: AsyncEngine
-AsyncSessionMaker: async_sessionmaker[AsyncSession]
-ScopedSession: async_scoped_session[AsyncSession]
+new_session: async_sessionmaker[AsyncSession]
+
+
+@asynccontextmanager
+async def begin():
+    """Start and return a new transaction"""
+    async with new_session() as session:
+        async with session.begin() as tx:
+            yield tx
 
 
 async def init_engine(db: str, echo=False):
-    global async_engine, AsyncSessionMaker, ScopedSession
+    global async_engine, new_session
 
     if db.startswith("sqlite://"):
         db = db.replace("sqlite://", "sqlite+aiosqlite://")
@@ -72,12 +76,7 @@ async def init_engine(db: str, echo=False):
         )
 
     async_engine = create_async_engine(db, echo=echo)
-    AsyncSessionMaker = async_sessionmaker(async_engine, expire_on_commit=False)
-
-    ScopedSession = async_scoped_session(
-        AsyncSessionMaker,
-        scopefunc=get_db_scope_id,
-    )
+    new_session = async_sessionmaker(async_engine, expire_on_commit=False)
 
     if "postgres" in async_engine.url.drivername:
         dbname = async_engine.url.database
@@ -112,108 +111,20 @@ async def dispose_engine():
         await async_engine.dispose()
 
 
-db_scope: contextvars.ContextVar[typing.Optional[str]] = contextvars.ContextVar(
-    "db_scope", default=None
-)
-
-
-def get_db_scope_id():
-    scope_id = db_scope.get()
-    if not scope_id:
-        raise RuntimeError("Trying to use a scoped session without an active scope")
-    return scope_id
-
-
-AsyncCallable = typing.Callable[..., typing.Awaitable]
-
-
-@asynccontextmanager
-async def scope(begin=False, isolated=False, autocommit=False):
-    """Create a context-bound session scope if needed and return the
-    :cls:`AsyncSession` currently in scope. You can also access the 'current'
-    session via the :data:`ScopedSession` proxy.
-
-    The scoped session is bound to the current 'context' (async task or thread)
-    and carries over to tasks created from the current one. Opening a nested
-    scope will re-use the existing session, if present.
-
-    Set `isolated` to `true` if you need a fresh session and do not want to
-    inherit the session scope from the parent task. This is usefull for
-    background tasks that need to run independently from the task that started
-    them.
-
-    :cls:`AsyncSession` will lazily start a transaction as soon as it is first
-    used. The session will be closed automatically once you exit the outermost
-    scope for the session.
-
-    Note that closing a session does not commit its state. Set `autocommit`
-    to `True` to trigger an automatic commit of the wrapped code did not raise
-    an exception.
-
-    Set `begin` to `true` to wrap a nested scope in an explicit (nested)
-    transaction, which will commit after the nested scope ends, or rolled
-    back on errors.
-
-    """
-
-    token = None
-    if not db_scope.get() or isolated:
-        scope = str(uuid.uuid4())
-        LOG.debug(
-            f"Creating session scope {scope} ({len(ScopedSession.registry.registry) + 1} total)"
-        )
-        token = db_scope.set(scope)
-
-    session = ScopedSession()
-    try:
-        if begin and session.in_transaction():
-            async with ScopedSession.begin_nested() as tx:
-                yield session
-                if autocommit and tx.is_active:
-                    await tx.commit()
-        elif begin:
-            async with ScopedSession.begin() as tx:
-                yield session
-                if autocommit and tx.is_active:
-                    await tx.commit()
-        else:
-            yield session
-            if autocommit:
-                await session.commit()
-    finally:
-        if token:
-            try:
-                await ScopedSession.remove()
-            finally:
-                db_scope.reset(token)
-
-
-def transactional(begin=False, isolated=False, autocommit=False):
-    """Wrapping an async callable into a :func:`scope` context."""
-
-    def decorator(func: AsyncCallable) -> AsyncCallable:
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            async with scope(begin=begin, isolated=isolated, autocommit=autocommit):
-                return await func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
-
-
 async def get_or_create(
     session: AsyncSession,
     select: Select[typing.Tuple[R]],
     create: typing.Callable[[], R],
 ) -> tuple[R, bool]:
     """Get or create an entity. Returns the entity and a boolean singaling if
-    the entity was created.
+    the entity was created. The session is committed to make sure the object
+    could really be created.
 
     The function first tries to fetch the model with the `select` statement.
     If there is no result, it calls the `create` callable and tries to
-    commit the returned entity. If that fails with an IntegrityError, we try
-    to fetch the entity again and return it.
+    ass the entity and commit the session. If that fails with an IntegrityError,
+    we assume someone else created the entity in the meantime. We fetch and
+    return it.
 
     The select statement should return the created entity, or the function
     will throw NoResultFound during the second attempt to fetch the entity.
@@ -274,7 +185,7 @@ class IntEnum(TypeDecorator):
             return None
 
 
-class ScopedORMMixin:
+class ORMMixin:
     @classmethod
     def select(cls, *a, **filter):
         stmt = select(cls)
@@ -285,25 +196,25 @@ class ScopedORMMixin:
         return stmt
 
     @classmethod
-    async def get(cls, *a, **filter):
-        return (await ScopedSession.execute(cls.select(*a, **filter))).scalar_one()
+    def update(cls, where: ColumnExpressionArgument[bool], *more_where):
+        return update(cls).where(where, *more_where)
 
     @classmethod
-    async def find(cls, *a, **filter):
+    def delete(cls, where: ColumnExpressionArgument[bool], *more_where):
+        return delete(cls).where(where, *more_where)
+
+    @classmethod
+    async def get(cls, session: AsyncSession, *a, **filter):
+        return (await session.execute(cls.select(*a, **filter))).scalar_one()
+
+    @classmethod
+    async def find(cls, session: AsyncSession, *a, **filter):
         return (
-            await ScopedSession.execute(cls.select(*a, **filter).limit(1))
+            await session.execute(cls.select(*a, **filter).limit(1))
         ).scalar_one_or_none()
 
-    async def delete(self):
-        await ScopedSession.delete(self)
 
-    async def save(self, now=False):
-        ScopedSession.add(self)
-        if now:
-            await ScopedSession.flush([self])
-
-
-class Base(ScopedORMMixin, AsyncAttrs, DeclarativeBase):
+class Base(ORMMixin, AsyncAttrs, DeclarativeBase):
     __abstract__ = True
 
     type_annotation_map = {
@@ -430,8 +341,16 @@ class Server(Base):
     def select_available(cls, tenant: Tenant):
         # TODO: Filter by tenant
         stmt = cls.select(enabled=True, health=ServerHealth.AVAILABLE)
-        stmt = stmt.order_by(Server.load.desc())
         return stmt
+
+    @classmethod
+    def select_best(cls, tenant: Tenant):
+        return cls.select_available(tenant).order_by(Server.load.desc()).limit(1)
+
+    def increment_load_stmt(self, load: float):
+        return (
+            update(Server).where(Server.id == self.id).values(load=Server.load + load)
+        )
 
     @property
     def api_base(self):

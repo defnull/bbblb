@@ -137,18 +137,7 @@ class BBBClient:
         return urljoin(self.base_url, endpoint) + "?" + self.sign_query(endpoint, query)
 
     def sign_query(self, endpoint: str, query: dict[str, str]):
-        if query:
-            query.pop("checksum", None)
-            qs = urlencode(query)
-            checksum = hashlib.sha256(
-                (endpoint + qs + self.secret).encode("UTF-8")
-            ).hexdigest()
-            return f"{qs}&checksum={checksum}"
-        else:
-            checksum = hashlib.sha256(
-                (endpoint + self.secret).encode("UTF-8")
-            ).hexdigest()
-            return f"checksum={checksum}"
+        return sign_query(endpoint, query, secret=self.secret)
 
     async def action(
         self,
@@ -208,6 +197,17 @@ class BBBClient:
 len2hashfunc = {40: hashlib.sha1, 64: hashlib.sha256, 128: hashlib.sha512}
 
 
+def sign_query(endpoint: str, query: dict[str, str], secret: str):
+    if query:
+        query.pop("checksum", None)
+        qs = urlencode(query)
+        checksum = hashlib.sha256((endpoint + qs + secret).encode("UTF-8")).hexdigest()
+        return f"{qs}&checksum={checksum}"
+    else:
+        checksum = hashlib.sha256((endpoint + secret).encode("UTF-8")).hexdigest()
+        return f"checksum={checksum}"
+
+
 def verify_checksum_query(
     action: str, query: str, secrets: list[str]
 ) -> tuple[dict[str, str], str]:
@@ -262,5 +262,5 @@ async def fire_callback(callback: model.Callback, payload: dict, clear=True):
     key = callback.tenant.secret
     data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
     await trigger_callback("POST", url, data=data)
-    async with model.scope() as session:
+    async with model.new_session() as session, session.begin():
         await session.delete(callback)

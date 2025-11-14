@@ -26,7 +26,7 @@ def tenant():
 @run_async
 async def create(update: bool, name: str, realm: str | None, secret: str | None):
     await model.init_engine(cfg.DB)
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
         ).scalar_one_or_none()
@@ -50,7 +50,7 @@ async def create(update: bool, name: str, realm: str | None, secret: str | None)
 @run_async
 async def remove(name: str):
     await model.init_engine(cfg.DB)
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
         ).scalar_one_or_none()
@@ -67,7 +67,7 @@ async def remove(name: str):
 async def list(with_secrets=False):
     """List all tenants with their realms and secrets."""
     await model.init_engine(cfg.DB)
-    async with model.AsyncSessionMaker() as session:
+    async with model.new_session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:
             out = f"{tenant.name} {tenant.realm} {tenant.secret}"

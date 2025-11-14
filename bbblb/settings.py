@@ -55,7 +55,12 @@ class BaseConfig:
     def set_defaults(self, **defaults):
         for name, value in defaults.items():
             if name in self._options and not hasattr(self, name):
-                self._set(name, value, "set_defaults")
+                self._set(name, value, "set_defaults()")
+
+    def set(self, *dicts, **values):
+        for name, value in dict(*dicts, **values).items():
+            if name in self._options:
+                self._set(name, value, "set()")
 
     def load_file(self, path: Path, remove_prefix="", strict=False):
         with open(path, "rt") as fp:

@@ -47,7 +47,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
         payload["exp"] = int(time.time() + int(expire))
 
     if server:
-        async with model.AsyncSessionMaker() as session:
+        async with model.new_session() as session:
             stmt = model.Server.select(domain=server)
             try:
                 server = (await session.execute(stmt)).scalar_one()
@@ -57,7 +57,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
         del payload["scope"]
         key = server.secret
     elif tenant:
-        async with model.AsyncSessionMaker() as session:
+        async with model.new_session() as session:
             stmt = model.Tenant.select(name=tenant)
             try:
                 tenant = (await session.execute(stmt)).scalar_one()
