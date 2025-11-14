@@ -98,7 +98,7 @@ class ApiRequestContext:
         the end of a code secion, or you can call reset() explicitly to
         end any transactions and free any DB handles mid-request.
         """
-        return model.new_session()
+        return model.session()
 
 
 class BBBApiRequest(ApiRequestContext):

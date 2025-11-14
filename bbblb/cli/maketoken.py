@@ -6,7 +6,7 @@ import time
 import click
 import jwt
 
-from . import main, run_async
+from . import main, async_command
 
 
 @main.command()
@@ -24,7 +24,7 @@ from . import main, run_async
 )
 @click.argument("subject")
 @click.argument("scope", nargs=-1)
-@run_async
+@async_command(db=True)
 async def maketoken(subject, expire, server, tenant, scope, verbose):
     """Generate an Admin Token that can be used to authenticate against the BBBLB API.
 
@@ -47,7 +47,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
         payload["exp"] = int(time.time() + int(expire))
 
     if server:
-        async with model.new_session() as session:
+        async with model.session() as session:
             stmt = model.Server.select(domain=server)
             try:
                 server = (await session.execute(stmt)).scalar_one()
@@ -57,7 +57,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
         del payload["scope"]
         key = server.secret
     elif tenant:
-        async with model.new_session() as session:
+        async with model.session() as session:
             stmt = model.Tenant.select(name=tenant)
             try:
                 tenant = (await session.execute(stmt)).scalar_one()

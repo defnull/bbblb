@@ -60,7 +60,7 @@ class Poller:
                             LOG.warning("We lost our {lockname!r} lock!?")
                             break
 
-                        async with model.new_session() as session:
+                        async with model.session() as session:
                             result = await session.execute(model.Server.select())
                             servers = result.scalars()
 
@@ -87,7 +87,7 @@ class Poller:
             self.shutdown_complete.set()
 
     async def poll_one(self, server_id):
-        async with model.new_session() as session:
+        async with model.session() as session:
             server = (
                 await session.execute(model.Server.select(id=server_id))
             ).scalar_one()
@@ -143,7 +143,7 @@ class Poller:
             LOG.warning(f"Server {server.domain} returned an error: {err}")
             success = False
 
-        async with model.new_session() as session:
+        async with model.session() as session:
             # Forget meetings not found on server
             forget_ids = set(
                 meeting.internal_id

@@ -4,10 +4,9 @@ import time
 from sqlalchemy import func
 from bbblb import model, utils
 from bbblb.bbblib import BBBClient
-from bbblb.settings import config as cfg
 import click
 
-from . import main, run_async
+from . import main, async_command
 
 
 @main.group()
@@ -24,11 +23,10 @@ def server():
 )
 @click.option("--secret", help="Set the server secret. Required for new servers")
 @click.argument("domain")
-@run_async
+@async_command(db=True)
 async def create(update: bool, domain: str, secret: str | None):
     """Create a new server or update a server secret."""
-    await model.init_engine(cfg.DB)
-    async with model.new_session() as session:
+    async with model.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -48,11 +46,10 @@ async def create(update: bool, domain: str, secret: str | None):
 
 @server.command()
 @click.argument("domain")
-@run_async
+@async_command(db=True)
 async def enable(domain: str):
     """Enable a server and make it available for new meetings."""
-    await model.init_engine(cfg.DB)
-    async with model.new_session() as session:
+    async with model.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -76,11 +73,10 @@ async def enable(domain: str):
     type=int,
     default=0,
 )
-@run_async
+@async_command(db=True)
 async def disable(domain: str, nuke: bool, wait: int):
     """Disable a server, so now new meetings are created on it."""
-    await model.init_engine(cfg.DB)
-    async with model.new_session() as session:
+    async with model.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -107,7 +103,7 @@ async def disable(domain: str, nuke: bool, wait: int):
         last_count = 0
 
         while True:
-            async with model.new_session() as session:
+            async with model.session() as session:
                 stmt = (
                     model.Meeting.select(model.Meeting.server == server)
                     .with_only_columns(func.count())
@@ -147,11 +143,10 @@ async def _end_meeting(meeting: model.Meeting):
 
 
 @server.command()
-@run_async
+@async_command(db=True)
 async def list(with_secrets=False):
     """List all servers with their secrets."""
-    await model.init_engine(cfg.DB)
-    async with model.new_session() as session:
+    async with model.session() as session:
         servers = (await session.execute(model.Server.select())).scalars()
         for server in servers:
             out = f"{server.domain} {server.secret}"

@@ -3,18 +3,32 @@ import functools
 import importlib
 import pkgutil
 from bbblb.settings import ConfigError, config as cfg
+import bbblb.model
 import click
 import os
 
 
-def run_async(func):
+def async_command(db=False):
     """Decorator that wraps coroutine with asyncio.run."""
 
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        return asyncio.run(func(*args, **kwargs))
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*a, **ka):
+            try:
+                if db:
+                    await bbblb.model.init_engine(cfg.DB)
+                await func(*a, **ka)
+            finally:
+                if db:
+                    await bbblb.model.dispose_engine()
 
-    return wrapper
+        @functools.wraps(wrapper)
+        def sync_wrapper(*args, **kwargs):
+            return asyncio.run(wrapper(*args, **kwargs))
+
+        return sync_wrapper
+
+    return decorator
 
 
 @click.group(name="bbblb", context_settings={"show_default": True})

@@ -116,7 +116,7 @@ class AuthContext:
             header = jwt.get_unverified_header(credentials)
             kid = header.get("kid")
             if kid and kid.startswith("bbb:"):
-                async with model.new_session() as session:
+                async with model.session() as session:
                     server = await model.Server.find(session, domain=kid[4:])
                 if not server:
                     raise ApiError(401, "Access denied", "This API is protected")
@@ -125,7 +125,7 @@ class AuthContext:
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
             elif kid and kid.startswith("tenant:"):
-                async with model.new_session() as session:
+                async with model.session() as session:
                     tenant = await model.Tenant.find(session, name=kid[7:])
                 if not tenant:
                     raise ApiError(401, "Access denied", "This API is protected")
@@ -164,7 +164,7 @@ async def handle_callback_end(request: Request):
         LOG.warning("Callback signature mismatch")
         return Response("Access denied, signature check failed", 401)
 
-    async with model.new_session() as session, session.begin():
+    async with model.session() as session, session.begin():
         # Check if we have to notify a frontend
         stmt = model.Callback.select(uuid=meeting_uuid, type=model.CALLBACK_TYPE_END)
         callback = (await session.execute(stmt)).scalar_one_or_none()
@@ -209,7 +209,7 @@ async def handle_callback_proxy(request: Request):
     except (UnicodeDecodeError, KeyError, IndexError):
         return Response("Invalid request", 400)
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
         callbacks = (await session.execute(stmt)).scalars().all()
         if not callbacks:
@@ -271,7 +271,7 @@ async def handle_tenants_list(request: Request):
     auth = await AuthContext.from_request(request)
     auth.ensure_scope("tenant:list")
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Tenant.select().order_by(model.Tenant.name)
         tenants = (await session.execute(stmt)).scalars()
         return {
@@ -287,7 +287,7 @@ async def handle_tenant_post(request: Request):
     tenant_name = request.path_params["name"]
     body = await request.json()
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Tenant.select(name=tenant_name)
         tenant = (await session.execute(stmt)).scalar_one_or_none()
         if not tenant:
@@ -319,7 +319,7 @@ async def handle_tenant_delete(request: Request):
     if auth.tenant and auth.tenant != tenant_name:
         raise ApiError(401, "Access denied", "This API is protected")
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Tenant.select(name=tenant_name)
         tenant = (await session.execute(stmt)).scalar_one_or_none()
         if tenant:
@@ -332,7 +332,7 @@ async def handle_server_list(request: Request):
     auth = await AuthContext.from_request(request)
     auth.ensure_scope("server:list")
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Server.select().order_by(model.Server.domain)
         servers = (await session.execute(stmt)).scalars()
         return {"servers": [{"domain": s.domain, "secret": s.secret} for s in servers]}
@@ -344,7 +344,7 @@ async def handle_server_post(request: Request):
     domain = request.path_params["domain"]
     body = await request.json()
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Server.select(domain=domain)
         server = (await session.execute(stmt)).scalar_one_or_none()
         if not server:
@@ -372,7 +372,7 @@ async def handle_server_enable(request: Request, enable=True):
     domain = request.path_params["domain"]
     auth.ensure_scope("server:state")
 
-    async with model.new_session() as session:
+    async with model.session() as session:
         stmt = model.Server.select(domain=domain)
         server = (await session.execute(stmt)).scalar_one_or_none()
         if not server:

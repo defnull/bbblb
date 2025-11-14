@@ -32,7 +32,12 @@ from sqlalchemy import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import AsyncSession, AsyncEngine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    AsyncEngine,
+    AsyncConnection,
+    AsyncSessionTransaction,
+)
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -51,20 +56,15 @@ def utcnow():
     return datetime.datetime.now(tz=datetime.timezone.utc)
 
 
-async_engine: AsyncEngine
-new_session: async_sessionmaker[AsyncSession]
-
-
-@asynccontextmanager
-async def begin():
-    """Start and return a new transaction"""
-    async with new_session() as session:
-        async with session.begin() as tx:
-            yield tx
+_engine: AsyncEngine | None = None
+_sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
 async def init_engine(db: str, echo=False):
-    global async_engine, new_session
+    global _engine, _sessionmaker
+
+    if _engine or _sessionmaker:
+        raise RuntimeError("Database engine already initialized")
 
     if db.startswith("sqlite://"):
         db = db.replace("sqlite://", "sqlite+aiosqlite://")
@@ -75,15 +75,15 @@ async def init_engine(db: str, echo=False):
             f"Unsupported database dialect: {db} (must be sqlite:// or postgresql://)"
         )
 
-    async_engine = create_async_engine(db, echo=echo)
-    new_session = async_sessionmaker(async_engine, expire_on_commit=False)
+    _engine = create_async_engine(db, echo=echo)
+    _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
 
-    if "postgres" in async_engine.url.drivername:
-        dbname = async_engine.url.database
+    if "postgres" in _engine.url.drivername:
+        dbname = _engine.url.database
         tmp_engine = create_async_engine(
-            async_engine.url._replace(database="postgres"), isolation_level="AUTOCOMMIT"
+            _engine.url._replace(database="postgres"), isolation_level="AUTOCOMMIT"
         )
-        async with tmp_engine.connect() as conn:
+        async with connect() as conn:
             result = await conn.execute(
                 sqlalchemy.text("SELECT datname FROM pg_database")
             )
@@ -94,7 +94,7 @@ async def init_engine(db: str, echo=False):
                 )
         await tmp_engine.dispose()
 
-    async with async_engine.begin() as conn:
+    async with connect() as conn:
         # Creating tables is not transactional in some databases, so we just try
         # our luck and if that fails, we sleep a couple of ms and try again.
         try:
@@ -107,8 +107,30 @@ async def init_engine(db: str, echo=False):
 
 
 async def dispose_engine():
-    if async_engine:
-        await async_engine.dispose()
+    global _engine, _sessionmaker
+    if _engine:
+        await _engine.dispose()
+        _engine = _sessionmaker = None
+
+
+def session() -> AsyncSession:
+    if not _sessionmaker:
+        raise RuntimeError("Database engine not initialized")
+    return _sessionmaker()
+
+
+@asynccontextmanager
+async def begin() -> typing.AsyncIterator[AsyncSessionTransaction]:
+    async with session() as sess, sess.begin() as tx:
+        yield tx
+
+
+@asynccontextmanager
+async def connect() -> typing.AsyncIterator[AsyncConnection]:
+    if not _engine:
+        raise RuntimeError("Database engine not initialized")
+    async with _engine.begin() as conn:
+        yield conn
 
 
 async def get_or_create(
@@ -240,7 +262,7 @@ class Lock(Base):
 
         This is not re-entrant. Acquiring the same lock twice will fail.
         """
-        async with async_engine.begin() as conn:
+        async with connect() as conn:
             if force_release:
                 expire = utcnow() - force_release
                 await conn.execute(
@@ -261,7 +283,7 @@ class Lock(Base):
     async def check(cls, name):
         """Update the lifetime of an already held lock, return true if such a
         lock exists, false otherwise."""
-        async with async_engine.begin() as conn:
+        async with connect() as conn:
             result = await conn.execute(
                 update(cls)
                 .values(ts=utcnow())
@@ -276,7 +298,7 @@ class Lock(Base):
     async def try_release(cls, name):
         """Release a named inter-process lock if it's owned by the current
         process. Return true if such a lock existed, false otherwise."""
-        async with async_engine.begin() as conn:
+        async with connect() as conn:
             result = await conn.execute(
                 delete(cls).where(Lock.name == name, Lock.owner == PROCESS_IDENTITY)
             )
