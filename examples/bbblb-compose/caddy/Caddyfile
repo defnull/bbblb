@@ -1,7 +1,18 @@
-
+{
+  # For ACME to work (may not be required in the future)
+  email   CHANGEME@example.com
+}
 
 ## CHANGE THIS to your actual domain(s)
 example.com *.example.com {
+
+  ## Forward both BBB and BBBLB API requests to the bbblb container
+  reverse_proxy /bbblb/* bbblb:8000
+  reverse_proxy /bigbluebutton/* bbblb:8000
+
+  # Redirect legacy playback URLs
+  redir /playback/presentation/0.9.0/playback.html /playback/presentation/2.3/{query.meetingId}?{query}
+  redir /playback/presentation/2.0/playback.html /playback/presentation/2.3/{query.meetingId}?{query}
 
   ## Serve the presentation player bundled with the image.
   handle_path /playback/presentation/2.3/* {
@@ -16,28 +27,31 @@ example.com *.example.com {
     file_server
   }
 
-  ## Serve 'presentation' files from a separate directory, because the player
-  ## expects them to be there by default. Not needed if you use the bundled
-  ## player from /usr/share/bbb-playback/
-  # handle_path /presentation/* {
-  #   root * /usr/share/bbblb/recordings/public/presentation
-  #   file_server
-  # }
+  ## Serve 'presentation' files from a different path because the player
+  ## expects them to be there by default. Not needed for the 'fixed' bundled
+  ## player.
+  handle_path /presentation/* {
+    root * /usr/share/bbblb/recordings/public/presentation
+    file_server
+  }
 
-  ## Forward both BBB and BBBLB API requests to the bbblb container
-  reverse_proxy /bbblb/* bbblb:8000
-  reverse_proxy /bigbluebutton/* bbblb:8000
-
-  ## FFor BBB Cluster Proxy setups you could use a rule similar to this one
-  ## to proxy request to a specific back-end server based on a path prefix.
-  #@proxy path_regexp proxy ^/p/(\w+)/(.*)$
-  #handle @proxy {
-  #  rewrite * {re.proxy.2}
-  #  reverse_proxy https://{re.proxy.1}.cluster.example.com
+  ## For BBB Cluster Proxy setups you need to forward certain requests to the
+  ## back-end servers based on a path prefix. You need one of these for each
+  ## back-end server. Tell me if you know a better way!
+  #redir /bbb-01/html5client /bbb-01/html5client/?{query}
+  #handle /bbb-01/html5client/* {
+  #    reverse_proxy https://bbb-01.example.com
+  #}
+  #handle_path /bbb-01/* {
+  #    reverse_proxy https://bbb-01.example.com
   #}
 
-  ## CHANGE THIS so serve Greenlight or some other application from the root
+  ## CHANGE THIS to serve Greenlight or some other application from the root
   ## path. You can also just keep it like this, then bbblb will display a
   ## small info page by default.
   reverse_proxy * bbblb:8000
 }
+
+
+
+
