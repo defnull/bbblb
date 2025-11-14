@@ -6,7 +6,7 @@ from urllib.parse import parse_qs
 import logging
 import jwt
 
-from bbblb.api import bbbapi
+from bbblb.web import bbbapi
 from bbblb import bbblib, model, recordings
 from bbblb.settings import config
 

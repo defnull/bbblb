@@ -5,8 +5,8 @@ from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 
-from bbblb.api import bbbapi
-from bbblb.api import bbblbapi
+from bbblb.web import bbbapi
+from bbblb.web import bbblbapi
 from bbblb import model
 from bbblb import poller
 from bbblb import recordings
