@@ -308,7 +308,7 @@ class Lock(Base):
             return False
 
     def __str__(self):
-        return f"Lock({self.name}')"
+        return f"Lock({self.name})"
 
 
 class Tenant(Base):
@@ -317,6 +317,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
     realm: Mapped[str] = mapped_column(unique=True, nullable=False)
     secret: Mapped[str] = mapped_column(unique=True, nullable=False)
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
 
     meetings: Mapped[list["Meeting"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
@@ -324,7 +325,7 @@ class Tenant(Base):
     recordings: Mapped[list["Recording"]] = relationship(back_populates="tenant")
 
     def __str__(self):
-        return f"Tenant({self.name}')"
+        return f"Tenant({self.name})"
 
 
 class ServerHealth(enum.Enum):
@@ -344,7 +345,7 @@ class Server(Base):
     secret: Mapped[str] = mapped_column(nullable=False)
 
     #: New meetings are only created on enabled servers
-    enabled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
 
     #: New meetings are only created on AVAILABLE servers
     health: Mapped[ServerHealth] = mapped_column(
@@ -379,7 +380,7 @@ class Server(Base):
         return f"https://{self.domain}/bigbluebutton/api/"
 
     def __str__(self):
-        return f"Server({self.domain}')"
+        return f"Server({self.domain})"
 
 
 class Meeting(Base):
