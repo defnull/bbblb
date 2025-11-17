@@ -6,6 +6,7 @@ dist/
 wheels/
 *.egg-info
 .*cache
+docs/_build
 
 # IDEs
 .vscode

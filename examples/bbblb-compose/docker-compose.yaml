@@ -19,6 +19,7 @@ services:
       ## This is the only config option defined here because it should
       ## match the postgres container below.
       - BBBLB_DB=postgresql://bbblb:bbblb@postgres/bbblb
+      - PATH_DATA=/usr/share/bbblb  # This is actually the default
 
     volumes:
       ## The docker container uses /usr/share/bbblb for persistent data
