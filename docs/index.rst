@@ -8,11 +8,36 @@ single-server installations, enabling organizations to distribute
 meetings across many BBB servers or offer managed BBB hosting services
 on shared hardware.
 
+.. .. image:: https://github.com/defnull/bbblb/actions/workflows/docker.yaml/badge.svg
+..     :target: https://github.com/defnull/bbblb/actions/workflows/docker.yaml
+..     :alt: Docker Images
+
+.. image:: https://img.shields.io/pypi/v/bbblb.svg?color=%2334D058
+    :target: https://pypi.python.org/pypi/bbblb/
+    :alt: Latest Version
+
+.. .. image:: https://img.shields.io/pypi/pyversions/bbblb.svg?color=%2334D058
+..     :target: https://pypi.python.org/pypi/bbblb/
+..     :alt: Supported Python Version
+
+.. image:: https://img.shields.io/pypi/l/bbblb.svg?color=%2334D058
+    :target: https://github.com/defnull/bbblb/
+    :alt: License
+
+.. image:: https://img.shields.io/badge/github-sources-blue?logo=github
+    :target: https://github.com/defnull/bbblb/
+    :alt: Sources
+
+.. image:: https://img.shields.io/badge/docker-images-blue?logo=docker
+    :target: https://github.com/defnull/bbblb/pkgs/container/bbblb
+    :alt: Images
+
 .. caution::
 
    BBBLB is currently in a **pre-alpha state**. It is a somewhat working prototype
    and **not ready for production** at this time. **APIs are not stable** and will
    change. There will be bugs. You have been warned.
+
 
 Features
 --------

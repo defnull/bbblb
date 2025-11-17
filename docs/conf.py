@@ -31,6 +31,14 @@ source_suffix = ['.rst', '.md']
 
 html_theme = "alabaster"
 html_static_path = ["_static"]
+html_theme_options = {
+    'github_user': 'defnull',
+    'github_repo': 'bbblb',
+    'fixed_sidebar': True,
+    'github_banner': True,
+    'github_button': False,
+}
+
 
 default_role = "code"
 
