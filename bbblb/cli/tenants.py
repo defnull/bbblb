@@ -7,11 +7,11 @@ from . import main, async_command
 
 
 @main.group()
-def tenant():
+def tenants():
     """Manage tenants"""
 
 
-@tenant.command()
+@tenants.command()
 @click.option(
     "--update", "-U", help="Update the tenant with the same name, if any.", is_flag=True
 )
@@ -44,7 +44,7 @@ async def create(update: bool, name: str, realm: str | None, secret: str | None)
         )
 
 
-@tenant.command()
+@tenants.command()
 @click.argument("name")
 @async_command(db=True)
 async def remove(name: str):
@@ -60,7 +60,7 @@ async def remove(name: str):
         click.echo(f"Tenant {name!r} removed")
 
 
-@tenant.command()
+@tenants.command()
 @async_command(db=True)
 async def list(with_secrets=False):
     """List all tenants with their realms and secrets."""
