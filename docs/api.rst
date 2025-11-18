@@ -8,6 +8,8 @@ those routes under the standard ``/bigbluebutton/api/*`` path.
 It also provides its own management API under the ``/bbblb/api/v1/*``
 path. This API is described here.
 
+.. _tokenauth:
+
 Token Authentication
 --------------------
 
@@ -17,87 +19,174 @@ signed by a trusted party and provided as an
 
 There are three types of tokens:
 
--  **API Tokens** are sigend with the BBBLB ``{SECRET}`` and allow
+-  **Admin Tokens** are sigend with the global ``BBBLB_SECRET`` and allow
    admins or automation tools to manage and control BBBLB at runtime.
-   They can be limited by their scopes, and associated with a tenant or
-   server to further limit their capabilities.
--  **Tenant Tokens** are signed with a tenant-specific pre-shared key
-   and limited to resources owned by that tenant.
--  **Server Tokens** are signed with a back-end server secret and
-   limited to very specific actions, e.g. uploading recordings or
+   Only BBBLB admins can create those tokens. Their permissions can be
+   limited with *scopes* (see below).
+-  **Tenant Tokens** are signed with the tenant-specific API secret,
+   which allows tenants to create their own tokens. Those are of cause
+   limited to tenant-owned resources.
+-  **Server Tokens** are signed with the back-end server API secret,
+   which allows back-end BBB servers to generate their own tokens. Those
+   are limited to very specific actions, e.g. uploading recordings or
    signaling server state.
 
-You can create new *API tokens* with the command line interface. Call
-``bbblb maketoken --expire <sec> <sub> <scope> [<scope> ...]`` to
-generate and print a new token. The ``sub`` parameter should identify
-the token owner and can later be used to revoke tokens without waiting
-for them to expire.
+You can use the ``bbblb maketoken`` command to create all three types
+of token.
 
-The ``scope`` claims limit for what the token can be used for:
+.. code:: sh
 
--  ``rec`` Manage recordings
+   # Admin Token
+   $ bbblb maketoken -v --expire 600 admin1 admin
+   Token Header: {}
+   Token Payload: {'sub': 'admin1', 'aud': 'bbb.example.com', 'scope': 'admin', 'jti': 'd31651f68f8b7a4c', 'exp': 1763460734}
+   eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1p[...]
+   
+   # Server Token
+   $ bbblb maketoken -v --expire 600 --server node01.example.com bbb1
+   Token Header: {'kid': 'bbb:node01.example.com'}
+   Token Payload: {'sub': 'bbb1', 'aud': 'bbb.example.com', 'jti': 'b9a1383f61b39585', 'exp': 1763460734}
+   eyJhbGciOiJIUzI1NiIsImtpZCI6ImJiYjpub2RlMDEuZXhhbXBsZ[...]
 
-   -  ``rec:list`` List recordings
-   -  ``rec:create`` Import new recordings
-   -  ``rec:update`` Edit or publish/unpublish recordings
-   -  ``rec:delete`` Delete recordings
+   # Tenant Token
+   $ bbblb maketoken -v --expire 600 --tenant default default1
+   Token Header: {'kid': 'tenant:default'}
+   Token Payload: {'sub': 'default1', 'aud': 'bbb.example.com', 'jti': '7e48835a2bef9315', 'exp': 1763460734}
+   eyJhbGciOiJIUzI1NiIsImtpZCI6InRlbmFudDpkZWZhdWx0Iiwid[...]
+   
+Token Scopes
+~~~~~~~~~~~~
 
--  ``tenant`` Manage tenants
+The ``scope`` claim can be used to limit permissions for *Admin tokens*. The claim should be a space-separates string of scopes.
 
-   -  ``tenant:list`` List tenants
-   -  ``tenant:create`` create tenants
-   -  ``tenant:update`` Update tenants
-   -  ``tenant:delete`` Delete tenants
-   -  ``tenant:secret`` View and change the tenant secret
+Scopes have no effect for tenant- oder server-tokens. Those have hard-coded scopes and are limited to very specific actions.
 
--  ``server`` Manage backend servers.
+-  ``rec`` Manage recordings. This parent scope implies all ``rec:*`` scopes.
+ 
+   -  ``rec:list`` List recordings.
+   -  ``rec:create`` Import new recordings.
+   -  ``rec:update`` Edit or publish/unpublish recordings.
+   -  ``rec:delete`` Delete recordings.
+
+-  ``tenant`` Manage tenants. This parent scope implies all ``tenant:*`` scopes.
+
+   -  ``tenant:list`` List tenants.
+   -  ``tenant:create`` Create new tenants.
+   -  ``tenant:update`` Update tenants.
+   -  ``tenant:delete`` Delete tenants.
+   -  ``tenant:secret`` View and change the tenant secret.
+
+-  ``server`` Manage backend servers. This parent scope implies all ``server:*`` scopes.
 
    -  ``server:list`` List all servers.
    -  ``server:create`` Register new servers.
    -  ``server:update`` Update servers and server state.
    -  ``server:delete`` Delete servers.
-   -  ``server:state`` Change server state (ONLINE / DRAIN / OFFLINE).
 
-Tenant- or Server-tokens can be created with the ``--tenant`` or
-``--server`` parameters. The scopes are mostly ignored in that case.
+-  ``self:tenant`` Special scope that is assigned to self-signed tenant tokens.
+-  ``self:server`` Special scope that is assigned to self-signed server tokens.
+-  ``admin`` This scope grants full access. It implies all other scopes.
 
-Protecting ``endMeetingURL`` webhooks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The the ``endMeetingURL`` and ``meta_endMeetingURL`` webhooks are
-usually not authenticated at all. BBBLB intercepts the ``endMeetingURL``
-webhook to quickly clean up its own meeting state after a meeting ends.
-To protect this webhook from abuse, BBBLB will create a *signed* URL
-using the global ``SECRET``. The value the of ``endMeetingURL`` webhook
-is not public and only the BBB server hosting the meeting will be able
-to trigger it.
+API Endpoints
+-------------
 
-Protecting other BBB webhooks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+BBB API
+~~~~~~~
+
+.. _BBBAPI: https://docs.bigbluebutton.org/development/api/
+
+BBBLB implements the official `BBB API <BBBAPI_>`_ available under the
+standard ``/bigbluebutton/api/*`` path. With BBBLB, each tenant uses
+their own private API secret to generate the `checksum` for BBB API calls. 
+
+To learn how to access this API and how to authenticate, please refer to the `official documentation <BBBAPI_>`_.
+
+.. rubric:: Limitations 
+
+Some BBB APIs cannot be fully implemented by a load balancer or require additional work. None of this should affect the typical front-end application, but here is a list of all known limitations or deviations: 
+
+* ``getJoinUrl`` is an internal API used exclusively by HTML5client and not available to front-end applications. See `Issue #24212 <https://github.com/bigbluebutton/bigbluebutton/issues/24212>`_.
+* ``putRecordingTextTracks`` and ``getRecordingTextTracks`` require processing steps on the back-end BBB server that would not be reflected in already transferred recordings. We may find a way to implement this in the future. Scalelite does not implement those APIs.
+* The root resource at ``/bigbluebutton/api/`` will only return minimal information and not the recently added graphql endpoint information. Those are used exclusively by HTML5client and should not be of any interest for front-end applications.
+* The ``getRecordings`` listing has an upper limit of ``BBBLB_MAX_ITEMS`` even if the client requested more items.
+* The ``join`` API will redirect the client twice. The first redirect will point to a new join url on the actual BBB server. This only affects clients that handle the redirect target in some special way instead of just following it.
+
+Webhooks
+~~~~~~~~~~~~~~~~~~~~~~
+
+BBB defines a bunch of webhooks that front-ends can use to get notified
+about ended meetings or finished recordings. BBBLB hooks into those
+webhooks and forwards them to the actual front-end. 
 
 Most newer webhooks in BBB are protected by wrapping their entire
 payload into a non-standard JWT token that is signed with the BBB API
 secret. Since BBBLB sits in between the front-end and the actual BBB
-server, it has to verify the token against the back-end secret, and then
-re-sign the token with the tenant-specific font-end secret. This is done
-automatically for all *known* callbacks, and can be enabled for
+server, it has to intercept those webhooks, verify the token against the
+back-end secret, re-sign the token with the tenant-specific font-end
+secret, and then forward the request to the original target url. This
+happens automatically for all *known* callbacks, and can be enabled for
 additional callbacks if needed.
 
-Protecting Recording Upload
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The ``endMeetingURL`` and ``meta_endMeetingURL`` webhooks are usually
+not authenticated at all. BBBLB intercepts the ``endMeetingURL`` webhook
+to quickly clean up its own meeting state after a meeting ends. To
+protect this webhook from abuse, BBBLB will create a *signed* URL using
+its own ``BBBLB_SECRET``. This is transparent to the front-end, tenants
+are allowed to use both webhooks without limitations.
 
-The ``api/v1/recording/upload`` API is special, because back-end BBB
-servers need to be able to authenticate against BBBLB in their
-``post_publish`` recording hooks and it would be a hassle to create
-individual tokens for each BBB node.
 
-Fortunately we already have a shared secret, namely the BBB API secret,
-that we can use here: To authenticate, the BBB server creates a JWT
-signed with its own secret. An additional ``kid`` claim in the JWT
-header identifies the server and thus the secret that BBBLB should use
-to verify the JWT.
+Recording Upload
+~~~~~~~~~~~~~~~~
 
-API Endpoints
--------------
+* **POST** `/bbblb/api/v1/recording/upload` (Content-Type: *application/x-tar*)
+
+The recording upload API expects an *application/x-tar* archive of a
+recording directory, optionally compressed with gzip. The tar archive can
+actually contain multiple recordings or recording formats. Any directory
+that contains a `metadata.xml` is considered during the import process.
+
+.. rubric:: Authentication
+
+This endpoint requires a :ref:`Server Token <tokenauth>`, or an :ref:`Admin Token <tokenauth>` with the `record:create` scope.
+
+.. rubric:: Parameters
+
+==============  ========  ===========
+Parameter       Location  Description
+==============  ========  ===========
+`Content-Type`  header    Must be `application/x-tar`.
+`*`             body      A tar or tar.gz archive with recording data.
+`tenant`        query     Assign all records to a specific tenant instead of auto-detecting the tenant from recording metadata.
+==============  ========  ===========
+
+.. rubric:: Response
+
+Recording import triggers background tasks for the actual import. A
+``202 Accepted`` response will indicate that the upload was successfull,
+but the actual import will happen later.
+
+.. rubric:: Examples
+
+.. code-block:: bash
+
+   API="https://bbblb.example.com/bbblb/api/v1/recording/upload"
+   TOKEN="..."
+   MEETING="d48a35e5c9bef7d5ca0f507c969e3d17a6005abf-1763452847184"
+   FORMAT="presentation"
+
+   tar -c "/var/bigbluebutton/published/$FORMAT/$MEETING/" \
+   | curl -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/x-tar" \
+            -X POST -T - "$API"
+          
+
+Tenant Management
+~~~~~~~~~~~~~~~~~
+
+TODO (API is not stable yet)
+
+Server Management
+~~~~~~~~~~~~~~~~~
 
 TODO (API is not stable yet)
