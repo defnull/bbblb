@@ -64,7 +64,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
                 tenant = (await session.execute(stmt)).scalar_one()
             except model.NoResultFound:
                 raise RuntimeError("Tenant not found in database: {tenant}")
-        headers["kid"] = f"tenant:{server.domain}"
+        headers["kid"] = f"tenant:{tenant.name}"
         del payload["scope"]
         key = tenant.secret
     else:
