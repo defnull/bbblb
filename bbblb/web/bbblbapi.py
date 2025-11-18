@@ -119,7 +119,7 @@ class AuthContext:
                 async with model.session() as session:
                     server = await model.Server.find(session, domain=kid[4:])
                 if not server:
-                    raise ApiError(401, "Access denied", "This API is protected")
+                    raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
                 payload["scope"] = SERVER_SCOPE
                 payload["sub"] = server.domain
@@ -128,11 +128,13 @@ class AuthContext:
                 async with model.session() as session:
                     tenant = await model.Tenant.find(session, name=kid[7:])
                 if not tenant:
-                    raise ApiError(401, "Access denied", "This API is protected")
+                    raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"])
                 payload["scope"] = TENANT_SCOPE
                 payload["sub"] = tenant.name
                 return AuthContext(payload, tenant=tenant)
+            elif kid:
+                raise ApiError(401, "Access denied", "Unknown key identifier")
             else:
                 payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
                 return AuthContext(payload)
