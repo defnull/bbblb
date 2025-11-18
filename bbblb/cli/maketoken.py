@@ -40,6 +40,7 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
     headers = {}
     payload = {
         "sub": subject,
+        "aud": cfg.DOMAIN,
         "scope": " ".join(sorted(set(scope))) or "admin",
         "jti": secrets.token_hex(8),
     }
@@ -72,5 +73,6 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
     token = jwt.encode(payload, key, headers=headers)
 
     if verbose:
-        click.echo(f"Token Content: {headers} {payload}", file=sys.stderr)
+        click.echo(f"Token Header: {headers}", file=sys.stderr)
+        click.echo(f"Token Payload: {payload}", file=sys.stderr)
     click.echo(token)
