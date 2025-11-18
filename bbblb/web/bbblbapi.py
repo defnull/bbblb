@@ -106,12 +106,12 @@ class AuthContext:
     async def from_request(cls, request: Request) -> "AuthContext":
         auth = request.headers.get("Authorization")
         if not auth:
-            raise ApiError(403, "Authentication required", "This API is protected")
+            raise ApiError(403, "Authentication required", "This API requires authentication")
 
         try:
             scheme, credentials = auth.split()
             if scheme.lower() != "bearer":
-                raise ApiError(403, "Authentication required", "This API is protected")
+                raise ApiError(401, "Access denied", "Unsupported Authorization type")
 
             header = jwt.get_unverified_header(credentials)
             kid = header.get("kid")
@@ -120,9 +120,7 @@ class AuthContext:
                     server = await model.Server.find(session, domain=kid[4:])
                 if not server:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
-                payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
-                if payload.get("aud", "") != config.DOMAIN:
-                    raise ApiError(401, "Access denied", "Wrong audience")
+                payload = jwt.decode(credentials, server.secret, algorithms=["HS256"], audience=config.DOMAIN)
                 payload["scope"] = SERVER_SCOPE
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
@@ -131,22 +129,23 @@ class AuthContext:
                     tenant = await model.Tenant.find(session, name=kid[7:])
                 if not tenant:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
-                payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"])
-                if payload.get("aud", "") != config.DOMAIN:
-                    raise ApiError(401, "Access denied", "Wrong audience")
+                payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"], audience=config.DOMAIN)
                 payload["scope"] = TENANT_SCOPE
                 payload["sub"] = tenant.name
                 return AuthContext(payload, tenant=tenant)
             elif kid:
                 raise ApiError(401, "Access denied", "Unknown key identifier")
             else:
-                payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
-                if payload.get("aud", "") != config.DOMAIN:
-                    raise ApiError(401, "Access denied", "Wrong audience")
+                payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"], audience=config.DOMAIN)
                 return AuthContext(payload)
-
-        except BaseException:
-            raise ApiError(401, "Access denied", "This API is protected")
+        except jwt.exceptions.InvalidAudienceError:
+            raise ApiError(401, "Access denied", "Invalid token audience")
+        except jwt.exceptions.InvalidSignatureError:
+            raise ApiError(401, "Access denied", "Invalid token signature")
+        except (jwt.exceptions.ExpiredSignatureError, jwt.exceptions.ImmatureSignatureError):
+            raise ApiError(401, "Access denied", "Expired token signature")
+        except jwt.exceptions.PyJWTError:
+            raise ApiError(401, "Access denied", "Invalid or missing token")
 
 
 ##
