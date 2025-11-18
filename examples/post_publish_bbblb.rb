@@ -65,7 +65,7 @@ end
 # Generate API URL and short-time access token signed with server secret
 q = URI.encode_www_form("tenant" => override_tenant) unless override_tenant.to_s.empty?
 upload_url = URI::HTTP.new("https", nil, meta_origin, nil, nil, "/bbblb/api/v1/recording/upload", nil, q, nil)
-upload_token = JWT.encode({sub: bbb_host, exp: Time.now.to_i + 600}, bbb_secret, 'HS256', {kid: "bbb:#{bbb_host}"})
+upload_token = JWT.encode({sub: bbb_host, aud: meta_origin, exp: Time.now.to_i + 600}, bbb_secret, 'HS256', {kid: "bbb:#{bbb_host}"})
 
 format_dirs.each do |upload_dir|
   retries = 10

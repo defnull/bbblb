@@ -121,6 +121,8 @@ class AuthContext:
                 if not server:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(credentials, server.secret, algorithms=["HS256"])
+                if payload.get("aud", "") != config.DOMAIN:
+                    raise ApiError(401, "Access denied", "Wrong audience")
                 payload["scope"] = SERVER_SCOPE
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
@@ -130,6 +132,8 @@ class AuthContext:
                 if not tenant:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(credentials, tenant.secret, algorithms=["HS256"])
+                if payload.get("aud", "") != config.DOMAIN:
+                    raise ApiError(401, "Access denied", "Wrong audience")
                 payload["scope"] = TENANT_SCOPE
                 payload["sub"] = tenant.name
                 return AuthContext(payload, tenant=tenant)
@@ -137,6 +141,8 @@ class AuthContext:
                 raise ApiError(401, "Access denied", "Unknown key identifier")
             else:
                 payload = jwt.decode(credentials, config.SECRET, algorithms=["HS256"])
+                if payload.get("aud", "") != config.DOMAIN:
+                    raise ApiError(401, "Access denied", "Wrong audience")
                 return AuthContext(payload)
 
         except BaseException:
