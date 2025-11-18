@@ -42,9 +42,8 @@ else
   format_dirs = Dir.glob("#{published_dir}/*/#{meeting_id}")
 end
 
-format_dirs = format_dirs.filter(File.directory?)
-raise("No matching recordings found") unless format_dirs.empty?
-
+format_dirs = format_dirs.filter {|d| File.directory? d }
+raise("No matching recordings found") if format_dirs.empty?
 
 # Load meeting metadata
 events_xml = "#{recording_dir}/raw/#{meeting_id}/events.xml"
@@ -65,13 +64,13 @@ end
 
 # Generate API URL and short-time access token signed with server secret
 q = URI.encode_www_form("tenant" => override_tenant) unless override_tenant.to_s.empty?
-upload_url = URI::HTTP.new("https", nil, meta_origin, nil, nil, "/bbblb/api/v1/recordings/upload", nil, q, nil)
-upload_token = jwt.encode({sub: bbb_host, exp: Time.now.to_i + 600}, bbb_secret, 'HS256', {kid: bbb_host})
+upload_url = URI::HTTP.new("https", nil, meta_origin, nil, nil, "/bbblb/api/v1/recording/upload", nil, q, nil)
+upload_token = JWT.encode({sub: bbb_host, exp: Time.now.to_i + 600}, bbb_secret, 'HS256', {kid: "bbb:#{bbb_host}"})
 
 format_dirs.each do |upload_dir|
   retries = 10
-  success = False
-  env = {'UPLOAD'=>upload_dir, 'TOKEN'=>upload_token, 'API'=>upload_url}
+  success = false
+  env = {'UPLOAD'=>upload_dir, 'TOKEN'=>upload_token, 'API'=>upload_url.to_s}
   cmd = 'tar -cz "$UPLOAD" | curl -X POST -T- "$API"'\
         ' --fail-with-body' \
         ' -H "Authorization: Bearer $TOKEN"' \
