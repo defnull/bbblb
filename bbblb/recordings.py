@@ -429,32 +429,22 @@ class RecordingImportTask:
         except BaseException:
             raise RecordingImportError(f"Failed to parse metadata.xml: {metafile}")
 
+        # Extract info info from metadata.xml
         record_id = str(xml.findtext("id") or "")
         if not utils.RE_RECORD_ID.match(record_id):
             raise RecordingImportError(
                 f"Invalid or missing recording ID: {record_id:r}"
             )
-
         format_name = str(xml.findtext("playback/format") or "")
         if not utils.RE_FORMAT_NAME.match(format_name):
             raise RecordingImportError(
                 f"Invalid or missing playback format name: {format_name:r}"
             )
-
         tenant_name = str(self.force_tenant or xml.findtext("meta/bbblb-tenant") or "")
         if not utils.RE_TENANT_NAME.match(tenant_name):
             raise RecordingImportError(
                 f"Invalid or missing tenant information: {tenant_name:r}"
             )
-
-        async with model.begin() as tx:
-            try:
-                tenant = (
-                    await tx.session.execute(model.Tenant.select(name=tenant_name))
-                ).scalar_one()
-            except model.NoResultFound:
-                raise RecordingImportError(f"Unknown tenant: {tenant_name}")
-
         meta = {tag.tag: tag.text for tag in xml.find("meta")}
         external_id = meta["meetingId"] = utils.remove_scope(meta["meetingId"])
         started = datetime.datetime.fromtimestamp(
@@ -466,18 +456,26 @@ class RecordingImportTask:
         participants = int(xml.findtext("participants"))
         state = model.RecordingState.UNPUBLISHED
 
-        # Copy files first, so the time consuming part is done before the API
-        # returns new entries.
+        # Fetch tenant this record belongs to, or fail
+        async with model.session() as session:
+            try:
+                tenant = await model.Tenant.get(session, name=tenant_name)
+            except model.NoResultFound:
+                raise RecordingImportError(f"Unknown tenant: {tenant_name}")
+
+        # Copy files while we do not hold a database connection, because
+        # this may take a while.
         self._breakpoint()
         format_dir = self.importer.get_storage_dir(tenant.name, record_id, format_name)
         await self._in_pool(self._copy_format_atomic, metafile.parent, format_dir)
         self._breakpoint()
 
-        # Get or create the Recording entry
-        async with model.begin() as tx:
-            recording, recording_created = await model.get_or_create(
-                tx.session,
-                model.Recording.select(record_id=record_id),
+        # Create or fetch recording entity
+        async with model.session() as session:
+            stmt = model.Recording.select(record_id=record_id).with_for_update()
+            record, record_created = model.get_or_create(
+                session,
+                stmt,
                 lambda: model.Recording(
                     tenant=tenant,
                     record_id=record_id,
@@ -489,44 +487,40 @@ class RecordingImportTask:
                     meta=meta,
                 ),
             )
+            if not record_created:
+                if record.tenant_fk != tenant.id:
+                    raise RecordingImportError("Recording belongs to different tenant!")
+                # TODO: Merge existing with new record?
 
-            if recording.tenant_fk != tenant.id:
-                raise RecordingImportError("Recording belongs to different tenant!")
-
-        # New recordings are unpublished, but existing recordings may be public
-        # already and the new format may need to be published before the DB
-        # entry is created and the API returns it as an available format.
-        if recording.state == model.RecordingState.PUBLISHED:
-            await self._in_pool(self.importer.publish, tenant.name, record_id)
-
-        # Get or create the RecordingFormat entry
-        async with model.begin() as tx:
-            format, format_created = await model.get_or_create(
-                tx.session,
-                model.PlaybackFormat.select(recording=recording, format=format_name),
+        # Create or fetch format entity
+        async with model.session() as session:
+            stmt = model.PlaybackFormat.select(
+                recording=record, format=format_name
+            ).with_for_update()
+            format, format_created = model.get_or_create(
+                session,
+                stmt,
                 lambda: model.PlaybackFormat(
-                    recording=recording,
+                    recording=record,
                     format=format_name,
                     xml=lxml.etree.tostring(xml.find("playback")).decode("UTF-8"),
                 ),
             )
+            if not format_created:
+                pass  # TODO: Merge existing with new format?
 
-        self._breakpoint()
+        # Each new format triggers the recording-ready callbacks again,
+        # just like BBB does it. We never know when the last format
+        # arrived, so we keep the callbacks around for a while.
+        if format_created and "bbblb-uuid" in record.meta:
+            async with model.session() as session:
+                stmt = model.Callback.select(
+                    uuid=record.meta["bbblb-uuid"], type=model.CALLBACK_TYPE_REC
+                )
+                callbacks = (await session.execute(stmt)).scalars()
 
-        # Fire recording-ready callbacks, if there are any. We fire them for
-        # every successfull import of a new format, and assume the frontend
-        # handles repeated calls. We have to do this because BBB may import
-        # formats individually, so new formats may appear after the first
-        # callback was triggered.
-        if format_created:
-            callbacks = []
-            async with model.begin() as tx:
-                uuid = meta.get("bbblb-uuid", None)
-                if uuid:
-                    stmt = model.Callback.select(
-                        uuid=uuid, type=model.CALLBACK_TYPE_REC
-                    )
-                    callbacks = (await tx.session.execute(stmt)).scalars()
+            # Fire callbacks in the background, they may take a while to
+            # complete if the front-end is unresponsive.
             for callback in callbacks:
                 asyncio.create_task(
                     bbblib.fire_callback(
@@ -535,7 +529,6 @@ class RecordingImportTask:
                         clear=False,
                     )
                 )
-                # TODO: Cleanup old callbacks.
 
     def _log(self, msg, level=logging.INFO, exc_info=None):
         LOG.log(level, f"[{self.import_id}] {msg}", exc_info=exc_info)
