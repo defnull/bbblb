@@ -232,10 +232,10 @@ class BBBLBConfig(BaseConfig):
     DEBUG: bool = False
 
     def populate(self, verify=True, strict=True):
-        if self.get_missing():
-            config.load_env("BBBLB_", strict=strict)
-            if config.CONFIG:
-                config.load_file(config.CONFIG, remove_prefix="BBBLB_", strict=strict)
+        cfile = os.environ.get("BBBLB_CONFIG", None)
+        if cfile:
+            self.load_file(Path(cfile), remove_prefix="BBBLB_", strict=strict)
+        self.load_env("BBBLB_", strict=strict)
         if verify:
             self.ensure_complete()
 
