@@ -177,8 +177,8 @@ but the actual import will happen later.
 
    tar -c "/var/bigbluebutton/published/$FORMAT/$MEETING/" \
    | curl -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/x-tar" \
-            -X POST -T - "$API"
+          -H "Content-Type: application/x-tar" \
+          -X POST -T - "$API"
           
 
 Tenant Management
