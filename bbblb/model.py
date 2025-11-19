@@ -3,11 +3,12 @@ from contextlib import asynccontextmanager
 import enum
 import logging
 import os
-import random
+from pathlib import Path
 import secrets
 import socket
 import typing
 from uuid import UUID
+import asyncpg
 import sqlalchemy
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -29,7 +30,7 @@ from sqlalchemy import (
     insert,
     update,
 )
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import (
@@ -42,7 +43,15 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
-from sqlalchemy.exc import NoResultFound, IntegrityError, OperationalError  # noqa: F401
+from sqlalchemy.exc import (
+    NoResultFound,  # noqa: F401
+    IntegrityError,  # noqa: F401
+    OperationalError,  # noqa: F401
+    ProgrammingError,  # noqa: F401
+)
+
+
+from bbblb import migrations
 
 LOG = logging.getLogger(__name__)
 
@@ -60,50 +69,125 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
-async def init_engine(db: str, echo=False):
+def _async_db_url(db_url) -> sqlalchemy.engine.url.URL:
+    if isinstance(db_url, str):
+        db_url = sqlalchemy.engine.url.make_url(db_url)
+    if db_url.drivername == "sqlite":
+        return db_url.set(drivername="sqlite+aiosqlite")
+    elif db_url.drivername == "postgresql":
+        return db_url.set(drivername="postgresql+asyncpg")
+    else:
+        raise ValueError(
+            f"Unsupported database driver name: {db_url} (must be sqlite:// or postgresql://)"
+        )
+
+
+def _sync_db_url(db_url) -> sqlalchemy.engine.url.URL:
+    if isinstance(db_url, str):
+        db_url = sqlalchemy.engine.url.make_url(db_url)
+    if db_url.drivername == "sqlite":
+        return db_url
+    elif db_url.drivername == "postgresql":
+        return db_url.set(drivername="postgresql+psycopg")
+    else:
+        raise ValueError(
+            f"Unsupported database driver name: {db_url} (must be sqlite:// or postgresql://)"
+        )
+
+
+async def init_engine(db_url: str, echo=False, create=False, migrate=False):
     global _engine, _sessionmaker
 
     if _engine or _sessionmaker:
         raise RuntimeError("Database engine already initialized")
 
-    if db.startswith("sqlite://"):
-        db = db.replace("sqlite://", "sqlite+aiosqlite://")
-    elif db.startswith("postgresql://"):
-        db = db.replace("postgresql://", "postgresql+asyncpg://")
-    else:
-        raise ValueError(
-            f"Unsupported database dialect: {db} (must be sqlite:// or postgresql://)"
-        )
+    try:
+        if create:
+            await create_database(db_url, echo)
 
-    _engine = create_async_engine(db, echo=echo)
-    _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
+        current, target = await check_migration_state(db_url, echo)
+        if current != target and migrate:
+            await migrate_db(db_url, echo)
+        elif current != target:
+            LOG.error(f"Expected schema revision {target!r} but found {current!r}.")
+            raise RuntimeError("Database migrations pending. Run migrations first.")
 
-    if "postgres" in _engine.url.drivername:
-        dbname = _engine.url.database
-        tmp_engine = create_async_engine(
-            _engine.url._replace(database="postgres"), isolation_level="AUTOCOMMIT"
-        )
-        async with connect() as conn:
+        _engine = create_async_engine(_async_db_url(db_url), echo=echo)
+        _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
+    except ConnectionRefusedError as e:
+        raise RuntimeError(f"Failed to connect to database: {e}")
+    except BaseException as e:
+        raise RuntimeError(f"Failed to initialize database: {e}")
+
+
+async def create_database(db_url, echo=False):
+    db_url = _async_db_url(db_url)
+    db_name = db_url.database
+    if "postgres" not in db_url.drivername:
+        return
+
+    tmp_engine = create_async_engine(
+        db_url.set(database="postgres"),
+        poolclass=sqlalchemy.pool.NullPool,
+        isolation_level="AUTOCOMMIT",
+        echo=echo,
+    )
+    try:
+        async with tmp_engine.connect() as conn:
             result = await conn.execute(
-                sqlalchemy.text("SELECT datname FROM pg_database")
+                text("SELECT 1 FROM pg_database WHERE datname=:dbname"),
+                {"dbname": db_name},
             )
-            if dbname not in [row[0] for row in result]:
-                LOG.info("Database not found, trying to create it: {dbname}")
+
+            if not result.first():
+                LOG.info(f"Creating missing database: {db_name}")
                 await conn.execute(
-                    sqlalchemy.text(f"CREATE DATABASE {dbname} ENCODING 'utf-8'")
+                    text(f"CREATE DATABASE {db_name} WITH ENCODING 'utf-8'")
                 )
+    except ProgrammingError as e:
+        while getattr(e, "__cause__", None):
+            e = e.__cause__
+        if not isinstance(e, asyncpg.exceptions.DuplicateDatabaseError):
+            raise e
+    finally:
         await tmp_engine.dispose()
 
-    async with connect() as conn:
-        # Creating tables is not transactional in some databases, so we just try
-        # our luck and if that fails, we sleep a couple of ms and try again.
-        try:
-            await conn.run_sync(Base.metadata.create_all)
-        except OperationalError:
-            sleep = random.randint(100, 200)
-            LOG.warning(f"Failed to create tables. Trying again in {sleep}ms")
-            await asyncio.sleep(sleep)
-            await conn.run_sync(Base.metadata.create_all)
+
+async def check_migration_state(db_url, echo=False):
+    import alembic
+    import alembic.script
+    import alembic.migration
+
+    def check(conn):
+        script_dir = Path(migrations.__file__).parent
+        script = alembic.script.ScriptDirectory(script_dir)
+        context = alembic.migration.MigrationContext.configure(conn)
+        return context.get_current_revision(), script.get_current_head()
+
+    engine = create_async_engine(
+        _async_db_url(db_url), poolclass=sqlalchemy.pool.NullPool, echo=echo
+    )
+
+    async with engine.connect() as conn:
+        return await conn.run_sync(check)
+
+
+async def migrate_db(db_url, echo=False):
+    return await asyncio.to_thread(migrate_db_sync, db_url, echo)
+
+
+def migrate_db_sync(db_url, echo=False):
+    import alembic
+    import alembic.config
+    import alembic.command
+
+    db_url = _sync_db_url(db_url).render_as_string(hide_password=False)
+    alembic_dir = Path(migrations.__file__).parent
+    alembic_cfg = alembic.config.Config()
+    alembic_cfg.set_main_option("script_location", str(alembic_dir))
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    alembic_cfg.set_main_option("sqlalchemy.echo", str(echo))
+    alembic.command.upgrade(alembic_cfg, "heads")
 
 
 async def dispose_engine():

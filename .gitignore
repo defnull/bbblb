@@ -7,6 +7,7 @@ wheels/
 *.egg-info
 .*cache
 docs/_build
+alembic.db
 
 # IDEs
 .vscode

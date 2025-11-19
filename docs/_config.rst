@@ -15,6 +15,16 @@ An sqlalchemy compatible database connection string, starting with either
 `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
 or `postgresql://user:pass@host/name`.
 
+``DB_CREATE`` (type: ``bool``, default: ``True``)
+
+Create database if it does not exist on startup. Only has an effect
+for postgres databases.
+
+``DB_MIGRATE`` (type: ``bool``, default: ``True``)
+
+Run migration steps to upgrade the database schema automatically on startup.
+Can be disabled if you want to manually run migrations after upgrades.
+
 ``PATH_DATA`` (type: ``Path``, default: ``Path("/usr/share/bbblb/")``)
 
 The directory where BBBLB stores all its persistent data, including
