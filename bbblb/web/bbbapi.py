@@ -688,10 +688,10 @@ async def handle_publish_recordings(ctx: BBBApiRequest):
         action = importer.unpublish
         new_state = model.RecordingState.UNPUBLISHED
 
-    # Fetch and update-lock all recordings
+    # Fetch all recordings
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
-    ).with_for_update()
+    )
     recs = (await ctx.session.execute(stmt)).scalars().all()
 
     if not recs:
@@ -763,7 +763,7 @@ async def handle_update_recordings(ctx: BBBApiRequest):
 
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
-    ).with_for_update()
+    )
     recs = (await ctx.session.execute(stmt)).scalars().all()
 
     for rec in recs:
