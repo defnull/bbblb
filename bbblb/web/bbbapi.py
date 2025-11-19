@@ -663,7 +663,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
 
         playback_xml: ETree = rec_xml.find("playback")
         for playback in rec.formats:
-            format_xml = recordings.playback_xml(playback, root_tag="format")
+            format_xml = recordings.format_xml(playback)
             playback_xml.append(format_xml)
 
         all_recordings.append(rec_xml)

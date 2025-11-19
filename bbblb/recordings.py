@@ -34,7 +34,7 @@ class RecordingImportError(RuntimeError):
     pass
 
 
-def playback_xml(playback: model.PlaybackFormat) -> ETree:
+def format_xml(playback: model.PlaybackFormat) -> ETree:
     orig = lxml.etree.fromstring(playback.xml)
     playback_domain = config.PLAYBACK_DOMAIN.format(
         DOMAIN=config.DOMAIN, REALM=playback.recording.tenant.realm
@@ -382,7 +382,6 @@ class RecordingImportTask:
             self._breakpoint()
             self._log(f"Extracting: {self.source}")
             with tarfile.open(self.source) as tar:
-                self._log(f"Opened: {tar}")
                 tar.extractall(self.task_dir, filter=tarfile.data_filter)
             self._log(f"Extracted: {self.source}")
 
@@ -526,15 +525,17 @@ class RecordingImportTask:
             if not format_created:
                 pass  # TODO: Merge existing with new format?
 
-        # Each new format triggers the recording-ready callbacks again,
-        # just like BBB does it. We never know when the last format
-        # arrived, so we keep the callbacks around for a while.
-        if format_created and "bbblb-uuid" in record.meta:
+        # The recording-ready callbacks are triggered for each format,
+        # and may be triggered again if a format is imported multiple
+        # times. That#s the way BBB behaves and most front-ends expect.
+        # We never know when the last import happend, so we keep the
+        # callbacks around for a while. (TODO)
+        if "bbblb-uuid" in record.meta:
             async with model.session() as session:
                 stmt = model.Callback.select(
                     uuid=record.meta["bbblb-uuid"], type=model.CALLBACK_TYPE_REC
                 )
-                callbacks = (await session.execute(stmt)).scalars()
+                callbacks = (await session.execute(stmt)).scalars().all()
 
             # Fire callbacks in the background, they may take a while to
             # complete if the front-end is unresponsive.
