@@ -472,8 +472,8 @@ class RecordingImportTask:
 
         # Create or fetch recording entity
         async with model.session() as session:
-            stmt = model.Recording.select(record_id=record_id).with_for_update()
-            record, record_created = model.get_or_create(
+            stmt = model.Recording.select(record_id=record_id)
+            record, record_created = await model.get_or_create(
                 session,
                 stmt,
                 lambda: model.Recording(
@@ -496,8 +496,8 @@ class RecordingImportTask:
         async with model.session() as session:
             stmt = model.PlaybackFormat.select(
                 recording=record, format=format_name
-            ).with_for_update()
-            format, format_created = model.get_or_create(
+            )
+            format, format_created = await model.get_or_create(
                 session,
                 stmt,
                 lambda: model.PlaybackFormat(
