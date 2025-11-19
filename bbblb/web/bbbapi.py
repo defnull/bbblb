@@ -650,7 +650,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             XML.startTime(str(int(rec.started.timestamp() * 1000))),
             XML.endTime(str(int(rec.ended.timestamp() * 1000))),
             XML.participants(str(rec.participants)),
-            XML.metadata(*[XML(key, value) for key, value in meta]),
+            XML.metadata(*[XML(key, value) for key, value in rec.meta.items()]),
             XML.playback(),
         )
 
