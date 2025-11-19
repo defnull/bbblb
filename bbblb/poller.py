@@ -160,8 +160,10 @@ class Poller:
                     )
                 )
 
-            # Update server laod and state
-            await session.refresh(server, with_for_update=True)
+            # Re-fetch server from DB so we can update load and state values
+            server = (
+                await session.execute(model.Server.select(id=server_id))
+            ).scalar_one()
 
             if success:
                 server.load = load

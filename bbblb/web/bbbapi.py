@@ -30,6 +30,7 @@ def api(action: str, methods=["GET", "POST"]):
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(request, *args, **kwargs):
+            out = ""
             try:
                 async with ApiRequestContext(request) as ctx:
                     out = await func(ctx)
