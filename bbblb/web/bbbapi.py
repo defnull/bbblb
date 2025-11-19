@@ -649,10 +649,13 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             XML.state(rec.state.value),
             XML.startTime(str(int(rec.started.timestamp() * 1000))),
             XML.endTime(str(int(rec.ended.timestamp() * 1000))),
-            XML.parparticipants(str(rec.participants)),
+            XML.participants(str(rec.participants)),
             XML.metadata(*[XML(key, value) for key, value in meta]),
             XML.playback(),
         )
+
+        # TODO: Undocumented <breakout> section with junk in it, see actual BBB responses
+        # TODO: Undocumented <rawSize> section
 
         xml_fix_meeting_id(
             rec_xml, utils.add_scope(rec.external_id, tenant.name), rec.external_id
@@ -660,8 +663,8 @@ async def handle_get_recordings(ctx: BBBApiRequest):
 
         playback_xml: ETree = rec_xml.find("playback")
         for playback in rec.formats:
-            rec_xml = recordings.playback_xml(playback, root_tag="format")
-            playback_xml.append(rec_xml)
+            format_xml = recordings.playback_xml(playback, root_tag="format")
+            playback_xml.append(format_xml)
 
         all_recordings.append(rec_xml)
 

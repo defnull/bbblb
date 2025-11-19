@@ -16,6 +16,7 @@ import urllib.parse
 
 from bbblb import bbblib, model, utils
 from bbblb.settings import config
+from bbblb.bbblib import ETree, XML
 
 LOG = logging.getLogger(__name__)
 
@@ -33,26 +34,44 @@ class RecordingImportError(RuntimeError):
     pass
 
 
-def playback_xml(playback: model.PlaybackFormat, root_tag: str = "format"):
-    xml = lxml.etree.fromstring(playback.xml)
-    xml.tag = root_tag
+def playback_xml(playback: model.PlaybackFormat) -> ETree:
+    orig = lxml.etree.fromstring(playback.xml)
     playback_domain = config.PLAYBACK_DOMAIN.format(
         DOMAIN=config.DOMAIN, REALM=playback.recording.tenant.realm
     )
-    format = playback.format
 
-    def fix(url):
-        url = urllib.parse.urlparse(url)
+    result = XML.format(
+        XML.type(playback.format),
+    )
+
+    # All fields but 'size' have a different name in metadata.xml and
+    # some are missing from some formats, so add a little translation layer here
+    def add_tag_optional(name, value):
+        if value is not None:
+            lxml.etree.SubElement(result, name).text = value
+
+    add_tag_optional("url", orig.findtext("link"))
+    add_tag_optional("processingTime", orig.findtext("processing_time"))
+    add_tag_optional("length", orig.findtext("duration"))
+    add_tag_optional("size", orig.findtext("size"))
+
+    # Append everything from the 'extentions' subelement (e.g. extensions/preview)
+    result.extend(orig.iterfind("extensions/*"))
+
+    # Fix all URLs we can find
+    for node in result.iter():
+        if not node.text or "://" not in node.text:
+            continue
+        try:
+            url = urllib.parse.urlparse(node.text.strip())
+        except ValueError:
+            continue
         url = url._replace(scheme="https", netloc=playback_domain)
-        if url.path.startswith(f"/{format}"):
+        if url.path.startswith(f"/{playback.format}"):
             url = url._replace(path=f"/playback{url.path}")
-        return url.geturl()
+        node.text = url.geturl()
 
-    xml.find("link").text = fix(xml.find("link").text)
-    for node in xml.iterfind("extensions/preview/images/image"):
-        node.text = fix(node.text)
-
-    return xml
+    return result
 
 
 def _sanity_pathname(name: str):
@@ -494,9 +513,7 @@ class RecordingImportTask:
 
         # Create or fetch format entity
         async with model.session() as session:
-            stmt = model.PlaybackFormat.select(
-                recording=record, format=format_name
-            )
+            stmt = model.PlaybackFormat.select(recording=record, format=format_name)
             format, format_created = await model.get_or_create(
                 session,
                 stmt,
