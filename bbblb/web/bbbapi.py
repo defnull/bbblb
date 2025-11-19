@@ -30,15 +30,15 @@ def api(action: str, methods=["GET", "POST"]):
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(request, *args, **kwargs):
-            out = ""
             try:
-                async with ApiRequestContext(request) as ctx:
+                async with BBBApiRequest(request) as ctx:
                     out = await func(ctx)
             except BBBError as err:
                 out = err
             except Exception as err:
                 LOG.exception("Unhandled exception")
                 out = bbblib.make_error("internalError", repr(err), 500)
+
             if isinstance(out, bbblib.BBBResponse):
                 if out._xml is not None:
                     out = to_xml(out.xml, out.status_code)
@@ -46,8 +46,6 @@ def api(action: str, methods=["GET", "POST"]):
                     out = JSONResponse(out.json, out.status_code)
             elif isinstance(out, ETree):
                 out = to_xml(out, 200)
-            elif isinstance(out, dict):
-                out = JSONResponse(out, 200)
             elif isinstance(out, dict):
                 out = JSONResponse(out, 200)
             return out
@@ -88,7 +86,6 @@ class ApiRequestContext:
     async def __aexit__(self, *a, **ka):
         if "session" in self.__dict__:
             await self.session.close()
-        return self
 
     @functools.cached_property
     def session(self):
