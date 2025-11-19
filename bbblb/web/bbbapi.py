@@ -321,7 +321,7 @@ async def handle_create(ctx: BBBApiRequest):
     if not meeting:
         # Find best server for new meetings
         stmt = model.Server.select_best(tenant).with_for_update()
-        server = (await ctx.session.execute(stmt)).one_or_none()
+        server = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if not server:
             raise bbblib.make_error("internalError", "No suitable servers available.")
 
