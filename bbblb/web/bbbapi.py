@@ -701,6 +701,7 @@ async def handle_publish_recordings(ctx: BBBApiRequest):
     for rec in recs:
         try:
             await asyncio.to_thread(action, tenant.name, rec.record_id)
+            # TODO: This is racy, but unlikely to cause issues. Improve?
             await ctx.session.execute(
                 model.Recording.update(model.Recording.id == rec.id).values(
                     state=new_state
@@ -766,8 +767,10 @@ async def handle_update_recordings(ctx: BBBApiRequest):
     )
     recs = (await ctx.session.execute(stmt)).scalars().all()
 
+    updated = False
     for rec in recs:
         for key, value in meta.items():
+            updated |= rec.meta.get(key) != value
             if value:
                 rec.meta[key] = value
             else:
@@ -775,6 +778,10 @@ async def handle_update_recordings(ctx: BBBApiRequest):
 
     await ctx.session.commit()
 
+    return XML.response(
+        XML.returncode("SUCCESS"),
+        XML.updated("true" if updated else "false"),
+    )
 
 @api("getRecordingTextTracks")
 async def handle_get_Recordings_text_tracks(ctx: BBBApiRequest):
