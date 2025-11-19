@@ -47,14 +47,14 @@ def format_xml(playback: model.PlaybackFormat) -> ETree:
     # The field names and sometimes also values differ a lot between
     # metadata.xml and getRecordings. Here is what we know:
     if (value := orig.findtext("link")) is not None:
-        lxml.etree.SubElement(result, "url").text = value
+        result.append(XML("url", value))
     if (value := orig.findtext("processing_time")) is not None:
-        lxml.etree.SubElement(result, "processingTime").text = value
+        result.append(XML("processingTime", value))
     if (value := orig.findtext("duration")) is not None:
         value = str(int(value) // 1000)
-        lxml.etree.SubElement(result, "length").text = value
+        result.append(XML("length", value))
     if (value := orig.findtext("size")) is not None:
-        lxml.etree.SubElement(result, "size").text = value
+        result.append(XML("size", value))
 
     # Append everything from the 'extentions' subelement (e.g. extensions/preview)
     result.extend(orig.iterfind("extensions/*"))
