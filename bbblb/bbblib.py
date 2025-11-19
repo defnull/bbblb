@@ -262,5 +262,6 @@ async def fire_callback(callback: model.Callback, payload: dict, clear=True):
     key = callback.tenant.secret
     data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
     await trigger_callback("POST", url, data=data)
-    async with model.session() as session, session.begin():
-        await session.delete(callback)
+    if clear:
+        async with model.session() as session, session.begin():
+            await session.delete(callback)
