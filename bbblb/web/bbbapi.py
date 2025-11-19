@@ -783,6 +783,7 @@ async def handle_update_recordings(ctx: BBBApiRequest):
         XML.updated("true" if updated else "false"),
     )
 
+
 @api("getRecordingTextTracks")
 async def handle_get_Recordings_text_tracks(ctx: BBBApiRequest):
     # Can only be implemented for existing captions. TODO
