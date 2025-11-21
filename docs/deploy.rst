@@ -1,6 +1,6 @@
-==========
-Deployment
-==========
+===============
+Getting Started
+===============
 
 .. _GITHUB: https://github.com/defnull/bbblb
 
@@ -12,6 +12,7 @@ There are several ways to deploy BBBLB:
 * **Standalone:** BBBLB *can* run as a standalone application with an embedded HTTP(S) server (uvicorn) and database (sqlite). While this is nice for quick tests and development, it is not the recommended way to run BBBLB in production.
 
 In this document we will focus on the **Docker Compose** based deployment approach, as it is the easiest and most complete of the available options.
+
 
 Docker Compose
 ==============
@@ -79,58 +80,7 @@ Since all containers are configured with ``restart: unless-stopped`` they will s
 
 To stop all running containers, run ``docker compose stop``. To completely reset everything and remove all docker containers and networks, run ``docker compose down``. Don’t worry, all your data lives in the ``./data/`` directory and will not be removed by docker. You can later start everything again if you need to.
 
-Tenants and Servers
-===================
+Add Tenants and Servers
+-----------------------
 
-Before we can actually start our first meeting, we need to add *Tenants* and *Servers* to our cluster. This can be fully automated via the :doc:`API <api>` but for now, we will use the ``bbbctl`` admin command line tool instead.
-
-.. attention::
-
-    The ``bbbctl`` tool needs to be able to connect to the same database and access the same configuration and storage paths as your running BBBLB service. If you deployed BBBLB in a container, then use the bundled ``./bbblb.sh`` script as a shortcut to run commands in the container.
-
-
-Add your first Tenant
----------------------
-
-To create your first "example" tenant, run:
-
-.. code:: bash
-
-    ./bbblb.sh tenant create --secret SECRET --realm bbb.example.com example
-
-Replace ``SECRET`` with a suitable tenant secret, ``example`` with a short but meaningful tenant name, and ``bbb.example.com`` with the primary domain of your BBBLB instance.
-
-**Realms are used to associate API requests with tenants.** BBBLB checks the request ``Host`` header by default and matches it against all configured tenants and their realms. Requests that do not have a matching tenant cannot be checksum-verified and are rejected.
-
-In this example we associate the ‘example’ tenant with the primary domain. To add more tenants, associate each one with a unique domain or subdomain as their realm, so they can be told apart.
-
-Add your first Server
-------------------------
-
-Let's assume you already have some BBB servers up and running. 
-
-.. attention::
-    
-    Make sure to install the ``./examples/post_publish_bbblb.rb`` script on BBB servers *before* attaching them to your cluster, or recordings won’t be transferred.
-
-To attach your first BBB server, run:
-
-.. code:: bash
-
-   ./bbblb.sh server create --secret=SECRET server1.example.com
-
-Replace ``SECRET`` with the BBB server API secret and ``server1.example.com`` with its domain.
-
-It may take up to 50 seconds (5 times the poll interval default) until the server is *actually* available for new meetings. Check `./bbblb.sh server list` to see all servers and their state.
-
-That’s it. Your ‘example’ tenant should now be able to start and manage meetings in your cluster via BBBLB.
-
-Import old Recordings
-=====================
-
-TODO
-
-Cluster Maintenance
-=====================
-
-TODO
+Continue with :doc:`admin`.

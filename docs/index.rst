@@ -72,6 +72,7 @@ Documentation
 
    deploy.rst
    config.rst
+   admin.rst
    api.rst
    cli.rst
    recording.rst

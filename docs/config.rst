@@ -1,19 +1,18 @@
+=============
 Configuration
 =============
 
-TODO
+BBBLB can be configured via environment variables or by passing additional `--config-file <FILE>` or `--config <KEY=VALUE>` parameters to the :ref:`bbblb <cli>` command line tool.
 
-Environment Variables
----------------------
+.. note::
 
-When configuring BBBLB via environment variables, prefix all config
-options listed here with ``BBBLB_``. For example, to enable debug mode,
-put ``BBBLB_DEBUG=True`` in your env-file. See ``examples/bbblb.env.example`` for a full list.
+    When configuring BBBLB via *environment variables*, prefix the config
+    option name with ``BBBLB_`` (e.g. ``BBBLB_DEBUG=True``).
 
 Config Options
 --------------
 
-The options here are lossely ordered by topic.
+This is an auto-generated list of all available config options, ordered loosely by topic.
 
 .. include:: _config.rst
 
