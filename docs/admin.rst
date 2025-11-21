@@ -2,23 +2,25 @@
 Cluster Administration
 ======================
 
-Manage Tenants
-==============
-
 Before we can actually start our first meeting, we need to add *Tenants* and *Servers* to our cluster. This can be fully automated via the :doc:`API <api>` but for now, we will use the ``bbbctl`` admin command line tool instead.
 
 .. note::
 
-    If you followed the :doc:`docker compose based deployment <deploy>`, you can use the ``bbbctl.sh`` wrapper ro tun ``bbbctl`` inside the container.
+    If you followed the :doc:`docker compose based deployment <deploy>`, you can use the ``bbbctl.sh`` wrapper to tun ``bbbctl`` inside the container.
 
-Add your first Tenant
-~~~~~~~~~~~~~~~~~~~~~
+Manage Tenants
+==============
+
+TODO
+
+Adding new Tenants
+~~~~~~~~~~~~~~~~~~
 
 To create your first "example" tenant, run:
 
 .. code:: bash
 
-    ./bbblb.sh tenant create --secret SECRET --realm bbb.example.com example
+    bbblb tenant create --secret SECRET --realm bbb.example.com example
 
 Replace ``SECRET`` with a suitable tenant secret, ``example`` with a short but meaningful tenant name, and ``bbb.example.com`` with the primary domain of your BBBLB instance.
 
@@ -52,14 +54,10 @@ Examples::
 Manage Servers
 ==============
 
-Before we can actually start our first meeting, we need to add *Tenants* and *Servers* to our cluster. This can be fully automated via the :doc:`API <api>` but for now, we will use the ``bbbctl`` admin command line tool instead.
+TODO
 
-.. attention::
-
-    The ``bbbctl`` tool needs to be able to connect to the same database and access the same configuration and storage paths as your running BBBLB service. If you deployed BBBLB in a container, then use the bundled ``./bbblb.sh`` script as a shortcut to run commands in the container.
-
-Add your first Server
-~~~~~~~~~~~~~~~~~~~~~
+Adding new Servers
+~~~~~~~~~~~~~~~~~~
 
 Let's assume you already have some BBB servers up and running. 
 
@@ -71,7 +69,7 @@ To attach your first BBB server, run:
 
 .. code:: bash
 
-   ./bbblb.sh server create --secret=SECRET server1.example.com
+   bbblb server create --secret=SECRET server1.example.com
 
 Replace ``SECRET`` with the BBB server API secret and ``server1.example.com`` with its domain.
 
@@ -80,11 +78,6 @@ It may take up to 50 seconds (5 times the poll interval default) until the serve
 That’s it. Your ‘example’ tenant should now be able to start and manage meetings in your cluster via BBBLB.
 
 Import old Recordings
-~~~~~~~~~~~~~~~~~~~~~
-
-TODO
-
-Cluster Maintenance
 ~~~~~~~~~~~~~~~~~~~~~
 
 TODO

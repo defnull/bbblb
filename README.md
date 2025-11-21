@@ -13,7 +13,7 @@ Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/`
 ## Features
 
 * **Multi-Tenancy:** Allow multiple front-end applications or customers to share the same BigBlueButton cluster while keeping their meetings and recordings strictly separated.
-* **Advanced Loadbalancing:** New meetings are created on the BBB servers with the lowest load, which calculated based on a prediction algorithm with multiple tuneable factors. The algorithm especially tries to avoid the ‘trampling herd’ problem when multiple meetings with unknown size are created in quick succession and may end up on the same back-end server.
+* **Advanced Loadbalancing:** Meetings are distributed based on current and predicted utilization, taking common usage patterns into account and avoiding the infamous ‘trampling herd’ problem.
 * **Recording Management:** Recordings are transferred from the BBB servers to central storage via a simple and robust post_publish script. No special configuration, ssh transfers or shared network file system necessary.
 * **Callback Relay:** Callbacks registered for a meeting are properly relayed between the back-end BBB server and the front-end application with a robust retry-mechanism.
 * **Management API:** BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
