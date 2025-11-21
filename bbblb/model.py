@@ -43,6 +43,7 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
+from sqlalchemy.orm import validates
 from sqlalchemy.exc import (
     NoResultFound,  # noqa: F401
     IntegrityError,  # noqa: F401
@@ -586,6 +587,17 @@ class Recording(Base):
         DateTime(timezone=True), nullable=False
     )
     participants: Mapped[int] = mapped_column(nullable=False, default=0)
+
+    @validates("meta")
+    def validate_meta(self, key, meta):
+        if not isinstance(meta, (dict)):
+            raise TypeError(f"%s must be a dict")
+        for key, value in meta:
+            if not key:
+                raise TypeError(f"%s keys must be non-empty strings")
+            if not value or not isinstance(value, str):
+                raise TypeError(f"%s values must be non-empty strings")
+        return meta
 
     def __str__(self):
         return f"Recording({self.record_id}')"
