@@ -296,9 +296,6 @@ async def _intercept_callbacks(
 
 @api("create")
 async def handle_create(ctx: BBBApiRequest):
-    # Phase one: Fetch an existing meeting, or create one in our own database
-    # and assign a server, so the next create call will use the same server.
-
     tenant = await ctx.require_tenant()
     params = await ctx.require_bbb_query()
     unscoped_id = await ctx.require_param("meetingID")

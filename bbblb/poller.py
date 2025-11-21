@@ -173,11 +173,14 @@ class Poller:
             else:
                 server.mark_error(config.POLL_FAIL)
 
-            LOG.info(f"[{server.domain}] meetings={len(running_ids)} users={users} load={load:.1f} health={server.health.name}")
+            LOG.info(
+                f"[{server.domain}] meetings={len(running_ids)} users={users} load={load:.1f} health={server.health.name}"
+            )
 
             # Log all state changes (including recovery) as warnings
             if old_health != server.health:
-                LOG.warning(f"[{server.domain}] health changed from {old_health.name} to {server.health.name}")
-
+                LOG.warning(
+                    f"[{server.domain}] health changed from {old_health.name} to {server.health.name}"
+                )
 
             await session.commit()

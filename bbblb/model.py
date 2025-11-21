@@ -459,8 +459,8 @@ class Server(Base):
         return (
             update(Server).where(Server.id == self.id).values(load=Server.load + load)
         )
-    
-    def mark_error(self, fail_threshold:int):
+
+    def mark_error(self, fail_threshold: int):
         if self.health == ServerHealth.OFFLINE:
             pass  # Already dead
         elif self.errors < fail_threshold:
@@ -476,7 +476,7 @@ class Server(Base):
             self.health = ServerHealth.OFFLINE
             LOG.warning(f"Server {self.domain} is OFFLINE")
 
-    def mark_success(self, recover_threshold:int):
+    def mark_success(self, recover_threshold: int):
         if self.health == ServerHealth.AVAILABLE:
             pass  # Already healthy
         elif self.recover < recover_threshold:
@@ -492,7 +492,6 @@ class Server(Base):
             self.recover = 0
             self.health = ServerHealth.AVAILABLE
             LOG.info(f"Server {self.domain} is ONLINE")
-
 
     @property
     def api_base(self):
@@ -591,12 +590,12 @@ class Recording(Base):
     @validates("meta")
     def validate_meta(self, key, meta):
         if not isinstance(meta, (dict)):
-            raise TypeError(f"%s must be a dict")
+            raise TypeError(f"Recording.{key} must be a dict")
         for key, value in meta:
             if not key:
-                raise TypeError(f"%s keys must be non-empty strings")
+                raise TypeError(f"Recording.{key} keys must be non-empty strings")
             if not value or not isinstance(value, str):
-                raise TypeError(f"%s values must be non-empty strings")
+                raise TypeError(f"Recording.{key} values must be non-empty strings")
         return meta
 
     def __str__(self):
