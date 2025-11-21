@@ -161,12 +161,10 @@ class BBBLBConfig(BaseConfig):
     #: or `postgresql://user:pass@host/name`.
     DB: str = "sqlite:////usr/share/bbblb/sqlite.db"
 
-    #: Create database if it does not exist on startup. Only has an effect
-    #: for postgres databases.
+    #: Create database if it does not exist on startup (postgres only).
     DB_CREATE: bool = True
 
-    #: Run migration steps to upgrade the database schema automatically on startup.
-    #: Can be disabled if you want to manually run migrations after upgrades.
+    #: Run database schema migrations automatically on startup.
     DB_MIGRATE: bool = True
 
     #: The directory where BBBLB stores all its persistent data, including

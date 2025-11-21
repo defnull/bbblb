@@ -404,10 +404,73 @@ class Tenant(Base):
     secret: Mapped[str] = mapped_column(unique=True, nullable=False)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
 
+    # Default values or overrides for create call parameters.
+    # The key should match a BBB create call parameter. The value must start with a control flag:
+    # '=' -> Enforce a value for this parameter. If empty, then remove this parameter.
+    # '?' -> Set parameter only if missing.
+    # '<' -> Cap a numeric parameter (e.g. 'duration' or 'maxParticipants') to a maximum value.
+    #        Override parameter if is is missing, below or equal to zero (which means 'unlimited'),
+    #        or larger than the desired value.
+    # '+' -> Add values to a comma separated list (e.g. disabledFeatures)
+    overrides: Mapped[dict[str, str]] = mapped_column(
+        JSON, nullable=False, default=dict
+    )
+
     meetings: Mapped[list["Meeting"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
     recordings: Mapped[list["Recording"]] = relationship(back_populates="tenant")
+
+    @validates("overrides")
+    def validate_overrides(self, key, params):
+        if not isinstance(params, (dict)):
+            raise TypeError("Tenant.{key} must be a dict")
+        for key, value in params.items():
+            if not key:
+                raise TypeError("Tenant.{key} keys must be non-empty strings")
+            if not value or not isinstance(value, str):
+                raise TypeError("Tenant.{key} values must be non-empty strings")
+            if value[0] not in "=?<+":
+                raise TypeError(
+                    "Tenant.{key} values must start with a valid action flag"
+                )
+        return params
+
+    def clear_overrides(self):
+        self.overrides = {}
+
+    def add_override(
+        self, name: str, operator: typing.Literal["=", "?", "<", "+"], value: str
+    ):
+        self.overrides = {**self.overrides, name: operator + value}
+
+    def remove_override(self, name: str):
+        self.overrides = {k: v for k, v in self.overrides.items() if k != name}
+
+    def apply_overrides(self, params):
+        for name, value in self.overrides.items():
+            action, value = value[0], value[1:]
+            if action == "=":
+                params[name] = value
+            elif action == "?":
+                params.setdefault(name, value)
+            elif action == "<":
+                try:
+                    orig = int(params[name])
+                except (ValueError, KeyError):
+                    orig = -1
+                if orig <= 0 or orig > int(value):
+                    params[name] = value
+            elif action == "+":
+                params = params.get("key", "").split(",")
+                for add in value.split():
+                    if add not in params:
+                        params.append(add)
+                params[name] = ",".join(filter(None, params))
+            else:
+                LOG.warning(
+                    f"{self} has bad create setting: {name} = {action + value!r}"
+                )
 
     def __str__(self):
         return f"Tenant({self.name})"

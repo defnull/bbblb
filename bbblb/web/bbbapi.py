@@ -337,6 +337,9 @@ async def handle_create(ctx: BBBApiRequest):
             ),
         )
 
+    # Apply tenant-specific create call defaults and overrides
+    tenant.apply_overrides(params)
+
     # Enforce BBBLB specific overrides
     params["meetingID"] = scoped_id
     params["meta_bbblb-uuid"] = str(meeting.uuid)

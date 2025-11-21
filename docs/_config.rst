@@ -17,13 +17,11 @@ or `postgresql://user:pass@host/name`.
 
 ``DB_CREATE`` (type: ``bool``, default: ``True``)
 
-Create database if it does not exist on startup. Only has an effect
-for postgres databases.
+Create database if it does not exist on startup (postgres only).
 
 ``DB_MIGRATE`` (type: ``bool``, default: ``True``)
 
-Run migration steps to upgrade the database schema automatically on startup.
-Can be disabled if you want to manually run migrations after upgrades.
+Run database schema migrations automatically on startup.
 
 ``PATH_DATA`` (type: ``Path``, default: ``Path("/usr/share/bbblb/")``)
 

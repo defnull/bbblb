@@ -1,3 +1,4 @@
+import re
 from bbblb import model
 from bbblb.settings import config as cfg
 import secrets
@@ -7,11 +8,11 @@ from . import main, async_command
 
 
 @main.group()
-def tenants():
+def tenant():
     """Manage tenants"""
 
 
-@tenants.command()
+@tenant.command()
 @click.option(
     "--update", "-U", help="Update the tenant with the same name, if any.", is_flag=True
 )
@@ -44,7 +45,7 @@ async def create(update: bool, name: str, realm: str | None, secret: str | None)
         )
 
 
-@tenants.command()
+@tenant.command()
 @click.argument("name")
 @async_command(db=True)
 async def remove(name: str):
@@ -60,12 +61,54 @@ async def remove(name: str):
         click.echo(f"Tenant {name!r} removed")
 
 
-@tenants.command()
+@tenant.command("list")
 @async_command(db=True)
-async def list(with_secrets=False):
+async def list_(with_secrets=False):
     """List all tenants with their realms and secrets."""
     async with model.session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:
             out = f"{tenant.name} {tenant.realm} {tenant.secret}"
             click.echo(out)
+
+
+@tenant.command()
+@click.option(
+    "--clear", help="Remove all overrides not mentioned during this call.", is_flag=True
+)
+@click.argument("name")
+@click.argument("overrides", nargs=-1, metavar="NAME=VALUE")
+@async_command(db=True)
+async def override(clear: bool, name: str, overrides: list[str]):
+    """Override create call parameters.
+
+    You can define any number of create parameter overrides per tenant as
+    PARAM=VALUE pairs. PARAM should match a BBB create call API parameter
+    and the given VALUE will be enforced on all future create calls
+    issued by this tenant. If VALUE is empty, then the parameter will be
+    removed from create calls.
+
+    Instead of the '=' operator you can also use '?' to define a fallback,
+    '<' to define a maximum value for numeric parameters (e.g. duration,
+    paxParticipants), or '+' to add items to a comma separated list
+    parameter (e.g. disableFeatures).
+    """
+    async with model.session() as session:
+        tenant = (
+            await session.execute(model.Tenant.select(name=name))
+        ).scalar_one_or_none()
+        if not tenant:
+            click.echo(f"Tenant {name!r} not found")
+            raise SystemExit(1)
+
+        if clear:
+            tenant.clear_overrides()
+        for override in overrides:
+            m = re.match("^([a-zA-Z0-9-_]+)([=?<-])(.*)$", override)
+            if not m:
+                click.echo(f"Failed to parse override {override!r}")
+                raise SystemExit(1)
+            name, operator, value = m.groups()
+            tenant.add_setting(name, operator, value)
+
+        session.commit()
