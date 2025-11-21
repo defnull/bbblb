@@ -25,6 +25,11 @@ Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/`
 By contributing to this project, you confirm that you understand and agree to both the *Developer Certificate of Origin* and the *Contributor License Agreement*, which can be found in the `CONTRIBUTING.md` file. 
 
 
+# Sponsors
+
+* [Gesellschaft für wissenschaftliche Datenverarbeitung mbH Göttingen](https://gwdg.de)
+
+
 # License
 
     BBBLB - BigBlueButton Load Balancer
