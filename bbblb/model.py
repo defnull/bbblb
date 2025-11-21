@@ -458,6 +458,40 @@ class Server(Base):
         return (
             update(Server).where(Server.id == self.id).values(load=Server.load + load)
         )
+    
+    def mark_error(self, fail_threshold:int):
+        if self.health == ServerHealth.OFFLINE:
+            pass  # Already dead
+        elif self.errors < fail_threshold:
+            # Server is failing
+            self.recover = 0  # Reset recovery counter
+            self.errors += 1
+            self.health = ServerHealth.UNSTABLE
+            LOG.warning(
+                f"Server {self.domain} is UNSTABLE and failing ({self.errors}/{fail_threshold})"
+            )
+        else:
+            # Server failed too often, give up
+            self.health = ServerHealth.OFFLINE
+            LOG.warning(f"Server {self.domain} is OFFLINE")
+
+    def mark_success(self, recover_threshold:int):
+        if self.health == ServerHealth.AVAILABLE:
+            pass  # Already healthy
+        elif self.recover < recover_threshold:
+            # Server is still recovering
+            self.recover += 1
+            self.health = ServerHealth.UNSTABLE
+            LOG.warning(
+                f"Server {self.domain} is UNSTABLE and recovering ({self.recover}/{recover_threshold})"
+            )
+        else:
+            # Server fully recovered
+            self.errors = 0
+            self.recover = 0
+            self.health = ServerHealth.AVAILABLE
+            LOG.info(f"Server {self.domain} is ONLINE")
+
 
     @property
     def api_base(self):

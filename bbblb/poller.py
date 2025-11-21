@@ -165,41 +165,19 @@ class Poller:
                 await session.execute(model.Server.select(id=server_id))
             ).scalar_one()
 
+            old_health = server.health
+
             if success:
                 server.load = load
-                LOG.info(
-                    f"[{server.domain}] meetings={len(running_ids)} users={users} load={load}"
-                )
-
-                if server.health == model.ServerHealth.AVAILABLE:
-                    pass  # Already healthy
-                elif server.recover < config.POLL_RECOVER:
-                    # Server is still recovering
-                    server.recover += 1
-                    server.health = model.ServerHealth.UNSTABLE
-                    LOG.warning(
-                        f"Server {server.domain} is UNSTABLE and recovering ({server.recover}/{config.POLL_RECOVER})"
-                    )
-                else:
-                    # Server fully recovered
-                    server.errors = 0
-                    server.recover = 0
-                    server.health = model.ServerHealth.AVAILABLE
-                    LOG.info(f"Server {server.domain} is ONLINE")
+                server.mark_success(config.POLL_RECOVER)
             else:
-                if server.health == model.ServerHealth.OFFLINE:
-                    pass  # Already dead
-                elif server.errors < config.POLL_FAIL:
-                    # Server is failing
-                    server.recover = 0  # Reset recovery counter
-                    server.errors += 1
-                    server.health = model.ServerHealth.UNSTABLE
-                    LOG.warning(
-                        f"Server {server.domain} is UNSTABLE and failing ({server.errors}/{config.POLL_FAIL})"
-                    )
-                else:
-                    # Server failed too often, give up
-                    server.health = model.ServerHealth.OFFLINE
-                    LOG.warning(f"Server {server.domain} is OFFLINE")
+                server.mark_error(config.POLL_FAIL)
+
+            LOG.info(f"[{server.domain}] meetings={len(running_ids)} users={users} load={load:.1f} health={server.health.name}")
+
+            # Log all state changes (including recovery) as warnings
+            if old_health != server.health:
+                LOG.warning(f"[{server.domain}] health changed from {old_health.name} to {server.health.name}")
+
 
             await session.commit()
