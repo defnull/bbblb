@@ -29,7 +29,7 @@ In this example we associate the ‘example’ tenant with the primary domain. T
 Override create parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The BBB API for creating new meetings accepts a ton of parameters and allows front-ends to control the featureset and many other aspects of a meeting. You can enforce or extend those parameters fore ach tenant using overrides::
+The BBB API for creating new meetings accepts a ton of parameters and allows front-ends to control the featureset and many other aspects of a meeting. You can enforce or extend those parameters for each tenant using overrides::
 
     Usage: bbblb override set [OPTIONS] TENANT NAME=VALUE
 
