@@ -312,11 +312,12 @@ async def handle_create(ctx: BBBApiRequest):
             % (utils.MAX_MEETING_ID_LEN - (len(scoped_id) - len(unscoped_id))),
         )
 
-    # Fetch existing meeting, if present
+    # Phase one: Fetch an existing meeting, or create one in our own database
+    # and assign a server, so the next create call will use the same server.
+
     select_meeting = model.Meeting.select(external_id=unscoped_id, tenant=tenant)
     meeting = (await ctx.session.execute(select_meeting)).scalar_one_or_none()
     meeting_created = False
-    callbacks = []
 
     if not meeting:
         # Find best server for new meetings
@@ -339,29 +340,26 @@ async def handle_create(ctx: BBBApiRequest):
             ),
         )
 
-        # Add or replace create parameters
-        params["meetingID"] = scoped_id
-        params["meta_bbblb-uuid"] = str(meeting.uuid)
-        params["meta_bbblb-origin"] = config.DOMAIN
-        params["meta_bbblb-tenant"] = meeting.tenant.name
-        params["meta_bbblb-server"] = meeting.server.domain
+    # Enforce BBBLB specific overrides
+    params["meetingID"] = scoped_id
+    params["meta_bbblb-uuid"] = str(meeting.uuid)
+    params["meta_bbblb-origin"] = config.DOMAIN
+    params["meta_bbblb-tenant"] = meeting.tenant.name
+    params["meta_bbblb-server"] = meeting.server.domain
 
-        # Fix all callback parameters and get a list of (not yet persisted) callbacks.
-        callbacks.extend(
-            await _intercept_callbacks(ctx, params, meeting, is_new=meeting_created)
-        )
-
-        # Persist new callbacks, if any
-        if meeting_created and callbacks:
-            ctx.session.add_all(callbacks)
-            await ctx.session.commit()
+    # Intercept callbacks.
+    callbacks = await _intercept_callbacks(ctx, params, meeting, is_new=meeting_created)
+    if meeting_created and callbacks:
+        ctx.session.add_all(callbacks)
+        await ctx.session.commit()
 
     # Phase two: At this point the meeting exists in the database, but may not
     # yet have an internal_id. We now forward the call to the back-end and see
     # what happens.
 
     try:
-        await ctx.session.close()  # Give connection back to pool
+        # Give connection back to pool, because the create call may take a while
+        await ctx.session.close()
 
         # Create meeting on back-end
         bbb = BBBClient(meeting.server.api_base, meeting.server.secret)
