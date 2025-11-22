@@ -338,6 +338,15 @@ class ORMMixin:
 
 class Base(ORMMixin, AsyncAttrs, DeclarativeBase):
     __abstract__ = True
+    metadata = MetaData(
+        naming_convention={
+            "ix": "ix_%(column_0_label)s",
+            "uq": "uq_%(table_name)s_%(column_0_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "pk": "pk_%(table_name)s",
+        }
+    )
 
     type_annotation_map = {
         list[str]: NewlineSeparatedList,
@@ -581,9 +590,7 @@ class Server(Base):
 
 class Meeting(Base):
     __tablename__ = "meetings"
-    __table_args__ = (
-        UniqueConstraint("external_id", "tenant_fk", name="meeting_tenant_uc"),
-    )
+    __table_args__ = (UniqueConstraint("external_id", "tenant_fk"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     #: The external meetingID. Unscoped, as provided by the front-end.
@@ -653,7 +660,7 @@ class Recording(Base):
 
     meta: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default={})
     formats: Mapped[list["PlaybackFormat"]] = relationship(
-        back_populates="recording", cascade="all, delete-orphan"
+        back_populates="recording", cascade="all, delete-orphan", passive_deletes=True
     )
 
     # Non-essential but nice to have attributes
@@ -682,14 +689,12 @@ class Recording(Base):
 
 class PlaybackFormat(Base):
     __tablename__ = "playback"
-    __table_args__ = (
-        UniqueConstraint("recording_fk", "format", name="unique_playback_rcf"),
-    )
+    __table_args__ = (UniqueConstraint("recording_fk", "format"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
     recording_fk: Mapped[int] = mapped_column(
-        ForeignKey("recordings.id"), nullable=False
+        ForeignKey("recordings.id", ondelete="CASCADE"), nullable=False
     )
     recording: Mapped[Recording] = relationship(back_populates="formats")
     format: Mapped[str] = mapped_column(nullable=False)

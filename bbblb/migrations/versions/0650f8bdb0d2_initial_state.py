@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("owner", sa.String(), nullable=False),
         sa.Column("ts", sa.DateTime(timezone=True), nullable=False),
-        sa.PrimaryKeyConstraint("name"),
+        sa.PrimaryKeyConstraint("name", name="pk_locks"),
     )
     op.create_table(
         "servers",
@@ -39,8 +39,8 @@ def upgrade() -> None:
         sa.Column("errors", sa.Integer(), nullable=False),
         sa.Column("recover", sa.Integer(), nullable=False),
         sa.Column("load", sa.Float(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("domain"),
+        sa.PrimaryKeyConstraint("id", name="pk_servers"),
+        sa.UniqueConstraint("domain", name="uq_servers_domain"),
     )
     op.create_table(
         "tenants",
@@ -49,10 +49,10 @@ def upgrade() -> None:
         sa.Column("realm", sa.String(), nullable=False),
         sa.Column("secret", sa.String(), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("name"),
-        sa.UniqueConstraint("realm"),
-        sa.UniqueConstraint("secret"),
+        sa.PrimaryKeyConstraint("id", name="pk_tenants"),
+        sa.UniqueConstraint("name", name="uq_tenants_name"),
+        sa.UniqueConstraint("realm", name="uq_tenants_realm"),
+        sa.UniqueConstraint("secret", name="uq_tenants_secret"),
     )
     op.create_table(
         "callbacks",
@@ -64,12 +64,10 @@ def upgrade() -> None:
         sa.Column("forward", sa.String(), nullable=True),
         sa.Column("created", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["server_fk"],
-            ["servers.id"],
+            ["server_fk"], ["servers.id"], name="fk_callbacks_server_fk_servers"
         ),
         sa.ForeignKeyConstraint(
-            ["tenant_fk"],
-            ["tenants.id"],
+            ["tenant_fk"], ["tenants.id"], name="fk_callbacks_tenant_fk_tenants"
         ),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -84,17 +82,15 @@ def upgrade() -> None:
         sa.Column("created", sa.DateTime(timezone=True), nullable=False),
         sa.Column("modified", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
-            ["server_fk"],
-            ["servers.id"],
+            ["server_fk"], ["servers.id"], name="fk_meetings_server_fk_servers"
         ),
         sa.ForeignKeyConstraint(
-            ["tenant_fk"],
-            ["tenants.id"],
+            ["tenant_fk"], ["tenants.id"], name="fk_meetings_tenant_fk_tenants"
         ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("external_id", "tenant_fk", name="meeting_tenant_uc"),
-        sa.UniqueConstraint("internal_id"),
-        sa.UniqueConstraint("uuid"),
+        sa.PrimaryKeyConstraint("id", name="pk_meetings"),
+        sa.UniqueConstraint("external_id", "tenant_fk", name="uq_meetings_external_id"),
+        sa.UniqueConstraint("internal_id", name="uq_meetings_internal_id"),
+        sa.UniqueConstraint("uuid", name="uq_meetings_uuid"),
     )
     op.create_table(
         "recordings",
@@ -112,11 +108,10 @@ def upgrade() -> None:
         sa.Column("ended", sa.DateTime(timezone=True), nullable=False),
         sa.Column("participants", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(
-            ["tenant_fk"],
-            ["tenants.id"],
+            ["tenant_fk"], ["tenants.id"], name="fk_recordings_tenant_fk_tenants"
         ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("record_id"),
+        sa.PrimaryKeyConstraint("id", name="pk_recordings"),
+        sa.UniqueConstraint("record_id", name="uq_recordings_record_id"),
     )
     op.create_table(
         "playback",
@@ -127,9 +122,10 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["recording_fk"],
             ["recordings.id"],
+            name="fk_playback_recording_fk_recordings",
         ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("recording_fk", "format", name="unique_playback_rcf"),
+        sa.PrimaryKeyConstraint("id", name="pk_playback"),
+        sa.UniqueConstraint("recording_fk", "format", name="uq_playback_recording_fk"),
     )
     # ### end Alembic commands ###
 
