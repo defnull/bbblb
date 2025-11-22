@@ -22,6 +22,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    MetaData,
     Select,
     Text,
     TypeDecorator,
@@ -29,6 +30,7 @@ from sqlalchemy import (
     delete,
     insert,
     update,
+    event,
 )
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncAttrs
@@ -113,8 +115,21 @@ async def init_engine(db_url: str, echo=False, create=False, migrate=False):
             LOG.error(f"Expected schema revision {target!r} but found {current!r}.")
             raise RuntimeError("Database migrations pending. Run migrations first.")
 
-        _engine = create_async_engine(_async_db_url(db_url), echo=echo)
-        _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
+        try:
+            _engine = create_async_engine(_async_db_url(db_url), echo=echo)
+            _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
+
+            # Enable foreign key support in sqlite
+            if "sqlite" in _engine.url.drivername:
+
+                @event.listens_for(_engine.sync_engine, "connect")
+                def _fk_pragma_on_connect(conn, con_record):  # noqa
+                    conn.execute("pragma foreign_keys=ON")
+
+        except BaseException:
+            _engine = _sessionmaker = None
+            raise
+
     except ConnectionRefusedError as e:
         raise RuntimeError(f"Failed to connect to database: {e}")
     except BaseException as e:
