@@ -258,10 +258,11 @@ class RecordingImporter:
         # Move files to trash
         store_path = self.storage_dir / tenant / record_id
         deleted_path = (
-            self.storage_dir / tenant / f"{record_id}.{secrets.token_hex(8)}.deleted"
+            self.deleted_dir / tenant / f"{record_id}.{secrets.token_hex(8)}.deleted"
         )
 
         try:
+            deleted_path.parent.mkdir(exist_ok=True, parents=True)
             shutil.move(store_path, deleted_path)
             LOG.info(f"Deleted recording {record_id} ({tenant})")
         except FileNotFoundError:
