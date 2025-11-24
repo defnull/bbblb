@@ -676,7 +676,7 @@ class Recording(Base):
     def validate_meta(self, key, meta):
         if not isinstance(meta, (dict)):
             raise TypeError(f"Recording.{key} must be a dict")
-        for key, value in meta:
+        for key, value in meta.items():
             if not key:
                 raise TypeError(f"Recording.{key} keys must be non-empty strings")
             if not value or not isinstance(value, str):
