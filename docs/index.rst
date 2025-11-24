@@ -16,12 +16,8 @@ on shared hardware.
     :target: https://pypi.python.org/pypi/bbblb/
     :alt: Latest Version
 
-.. .. image:: https://img.shields.io/pypi/pyversions/bbblb.svg?color=%2334D058
-..     :target: https://pypi.python.org/pypi/bbblb/
-..     :alt: Supported Python Version
-
 .. image:: https://img.shields.io/pypi/l/bbblb.svg?color=%2334D058
-    :target: https://github.com/defnull/bbblb/
+    :target: https://github.com/defnull/bbblb/blob/main/LICENSE.md
     :alt: License
 
 .. image:: https://img.shields.io/badge/github-sources-blue?logo=github
@@ -29,8 +25,8 @@ on shared hardware.
     :alt: Sources
 
 .. image:: https://img.shields.io/badge/docker-images-blue?logo=docker
-    :target: https://github.com/defnull/bbblb/pkgs/container/bbblb
-    :alt: Images
+    :target: https://hub.docker.com/r/defnull/bbblb
+    :alt: Container Images
 
 .. caution::
 
