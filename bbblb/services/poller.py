@@ -41,62 +41,58 @@ class MeetingPoller(BackgroundService):
 
     async def run(self):
         while True:
-            # Random sleep to give other proceses a chance to fetch the lock
-            await asyncio.sleep(random.random())
-
-            # Acquire exclusive lock, or try again
-            if not await self.lock.try_acquire():
-                continue
-
             try:
-                await self.poll_loop()
-            finally:
-                await self.lock.try_release()
-                self.locked = False
+                # Short random sleep to give other proceses a chance
+                await asyncio.sleep(random.random() * self.interval)
+
+                # Acquire exclusive lock, or try again
+                if not await self.lock.try_acquire():
+                    continue
+
+                try:
+                    LOG.info("Starting poller loop ...")
+                    await self.poll_loop()
+                finally:
+                    await self.lock.try_release()
+                    self.locked = False
+            except asyncio.CancelledError:
+                LOG.info("Poller shutting down...")
+                raise
+            except BaseException:
+                LOG.exception("Unhandled polling error")
+                continue  # Recover by starting another loop
 
     async def poll_loop(self):
-        try:
-            LOG.info("Starting poller loop ...")
-            while True:
-                ts = time.time()
+        while True:
+            ts = time.time()
 
-                if not await self.lock.check():
+            if not await self.lock.check():
+                LOG.warning(f"We lost the {self.lock.name!r} lock!?")
+                break
+
+            async with self.db.session() as session:
+                result = await session.execute(model.Server.select())
+                servers = result.scalars()
+
+            futures = [
+                asyncio.ensure_future(self.poll_one(server.id)) for server in servers
+            ]
+            while futures:
+                done, futures = await asyncio.wait(
+                    futures, timeout=(self.lock.timeout * 0.8).total_seconds()
+                )
+
+                if futures and not await self.lock.check():
                     LOG.warning(f"We lost the {self.lock.name!r} lock!?")
-                    break
+                    for future in futures:
+                        future.cancel()
+                    return
 
-                async with self.db.session() as session:
-                    result = await session.execute(model.Server.select())
-                    servers = result.scalars()
-
-                futures = [
-                    asyncio.ensure_future(self.poll_one(server.id))
-                    for server in servers
-                ]
-                while futures:
-                    done, futures = await asyncio.wait(
-                        futures, timeout=(self.lock.timeout * 0.8).total_seconds()
-                    )
-
-                    if futures and not await self.lock.check():
-                        LOG.warning(f"We lost the {self.lock.name!r} lock!?")
-                        for future in futures:
-                            future.cancel()
-                        return
-
-                dt = time.time() - ts
-                sleep = self.interval - dt
-                if sleep <= 0.0:
-                    LOG.warning(
-                        f"Poll took longer than {self.interval}s ({dt:.1}s total)"
-                    )
-                await asyncio.sleep(max(1.0, sleep))
-
-        except asyncio.CancelledError:
-            LOG.info("Poller shutting down...")
-            raise
-        except BaseException:
-            LOG.exception("Unhandled polling error")
-            return  # Recover by starting another loop
+            dt = time.time() - ts
+            sleep = self.interval - dt
+            if sleep <= 0.0:
+                LOG.warning(f"Poll took longer than {self.interval}s ({dt:.1}s total)")
+            await asyncio.sleep(max(1.0, sleep))
 
     async def poll_one(self, server_id):
         async with self.db.session() as session:

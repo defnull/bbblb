@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import os
@@ -79,14 +80,27 @@ class NamedLock:
 
     async def try_release(self):
         """Release a named inter-process lock if it's owned by the current
-        process. Return true if such a lock existed, false otherwise."""
-        async with self.db.connect() as conn:
-            result = await conn.execute(
-                model.delete(model.Lock).where(
-                    model.Lock.name == self.name, model.Lock.owner == PROCESS_IDENTITY
+        process. Return true if such a lock existed, false otherwise.
+
+        Because this is often called in a finally-block and is not expected to fail,
+        if will simply return `False` for all exceptions other any CancelledError.
+        """
+        try:
+            async with self.db.connect() as conn:
+                result = await conn.execute(
+                    model.delete(model.Lock).where(
+                        model.Lock.name == self.name,
+                        model.Lock.owner == PROCESS_IDENTITY,
+                    )
                 )
+                if result.rowcount > 0:
+                    LOG.debug(f"Lock {self.name!r} released by {PROCESS_IDENTITY}")
+                    return True
+                return False
+        except asyncio.CancelledError:
+            raise
+        except BaseException:
+            LOG.exception(
+                f"Error while trying to release {self.name!r} as {PROCESS_IDENTITY}"
             )
-            if result.rowcount > 0:
-                LOG.debug(f"Lock {self.name!r} released by {PROCESS_IDENTITY}")
-                return True
             return False

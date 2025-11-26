@@ -106,28 +106,33 @@ class RecordingManager(BackgroundService):
     async def on_start(self, db: DBContext, bbb: BBBHelper):
         self.db = db
         self.bbb = bbb
-        await super().on_start()
 
-    async def run(self):
-        await self.init()
-        try:
-            while True:
-                await asyncio.sleep(self.poll_interval)
-                await self.pickup_waiting()
-                await self.cleanup()
-        finally:
-            await self.close()
-
-    async def init(self):
         # Create all directories we need, if missing
         for dir in (d for d in self.__dict__.values() if isinstance(d, Path)):
             if dir and not dir.exists():
                 await self._in_pool(dir.mkdir, parents=True, exist_ok=True)
 
-    async def pickup_waiting(self):
+        await super().on_start()
+
+    async def run(self):
+        try:
+            while True:
+                try:
+                    await asyncio.sleep(self.poll_interval)
+                    await self.schedule_waiting()
+                    await self.cleanup()
+                except asyncio.CancelledError:
+                    raise
+                except BaseException:
+                    LOG.exception("Unhandled recording import error")
+                    continue
+        finally:
+            await self.close()
+
+    async def schedule_waiting(self):
+        """Pick up waiting tasks from inbox"""
         for file in self.inbox_dir.glob("*.tar"):
             self._schedule(RecordingImportTask(self, file.stem, file))
-        pass
 
     async def cleanup(self):
         # TODO: Cleanup *.failed and *.canceled work directories.
