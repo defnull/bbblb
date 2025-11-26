@@ -8,6 +8,8 @@ wheels/
 .*cache
 docs/_build
 alembic.db
+htmlcov
+.coverage
 
 # IDEs
 .vscode
@@ -16,7 +18,7 @@ alembic.db
 .venv
 
 # Test data directories
-testhook.py
 testdata
 .var
 examples/bbblb-compose/data
+dev.*

@@ -6,7 +6,8 @@ on:
     tags: [ 'v*' ]
 
 jobs:
-  build-and-push-main:
+
+  build-and-push:
     runs-on: ubuntu-latest
 
     permissions:

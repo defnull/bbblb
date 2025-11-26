@@ -7,6 +7,8 @@ from bbblb import model
 import click
 
 from bbblb.cli.server import _end_meeting
+from bbblb.services import ServiceRegistry
+from bbblb.services.db import DBContext
 
 from . import main, async_command
 
@@ -18,14 +20,16 @@ def state():
 
 @state.command()
 @click.argument("FILE", default="-")
-@async_command(db=True)
-async def save(file: str):
+@async_command()
+async def save(obj: ServiceRegistry, file: str):
     """Export current server and tenant configuration as JSON."""
+    db = await obj.use("db", DBContext)
+
     output = {
         "servers": {},
         "tenants": {},
     }
-    async with model.session() as session:
+    async with db.session() as session:
         stmt = model.Server.select().order_by(model.Server.domain)
         for server in (await session.execute(stmt)).scalars():
             output["servers"][server.domain] = {
@@ -64,8 +68,8 @@ async def save(file: str):
     "--dry-run", "-n", help="Simulate changes without changing anything.", is_flag=True
 )
 @click.argument("FILE", default="-")
-@async_command(db=True)
-async def load(file: str, nuke: bool, dry_run: bool, clean: bool):
+@async_command()
+async def load(obj: ServiceRegistry, file: str, nuke: bool, dry_run: bool, clean: bool):
     """Load and apply server and tenant configuration from JSON.
 
     WARNING: This will modify or remove tenants and servers without asking.
@@ -78,6 +82,7 @@ async def load(file: str, nuke: bool, dry_run: bool, clean: bool):
     Use --nuke to forcefully end all meetings on obsolete servers or meetings.
 
     """
+    db = await obj.use("db", DBContext)
 
     if file == "-":
         state = await asyncio.to_thread(json.load, sys.stdin)
@@ -97,7 +102,7 @@ async def load(file: str, nuke: bool, dry_run: bool, clean: bool):
         setattr(obj, attr, value)
         click.echo(f"CHANGE {obj}.{attr} {oldval!r} -> {value!r}")
 
-    async with model.session() as session, session.begin():
+    async with db.session() as session, session.begin():
         # Fetch and lock ALL servers and meetings.
         cur = await session.execute(model.Server.select().with_for_update())
         servers = {server.domain: server for server in cur.scalars()}
@@ -125,7 +130,7 @@ async def load(file: str, nuke: bool, dry_run: bool, clean: bool):
                 for meeting in meetings:
                     click.echo(f"END {meeting}")
                     if not dry_run:
-                        await _end_meeting(meeting)
+                        await _end_meeting(obj, meeting)
 
             if clean and (nuke or not meetings):
                 click.echo(f"REMOVED {server}")

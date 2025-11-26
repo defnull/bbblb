@@ -14,16 +14,22 @@ RE_TENANT_NAME = re.compile("^[a-zA-Z0-9]{1,%d}$" % MAX_TENANT_NAME_LEN)
 
 
 def add_scope(original_id: str, scope: str):
-    return f"{original_id}-bbblb-{scope}"
+    return f"{original_id}{SCOPE_SEPARATOR}{scope}"
 
 
-def extract_scope(scoped_id: str) -> tuple[str, str]:
-    original, _, scope = scoped_id.rpartition("-bbblb-")
-    return original, scope
+def split_scope(scoped_id: str) -> tuple[str, str | None]:
+    """Split a scoped ID into the unscoped ID and the scope. If the
+    input is not scoped, the returned scope will be None."""
+    unscoped, sep, scope = scoped_id.rpartition(SCOPE_SEPARATOR)
+    if not sep:
+        return scoped_id, None
+    return unscoped, scope
 
 
 def remove_scope(scoped_id: str) -> str:
-    return extract_scope(scoped_id)[0]
+    """Returns the unscoped version of a scoped meeting id,
+    or the original ID if there is no scope."""
+    return split_scope(scoped_id)[0] or scoped_id
 
 
 class cached_classproperty:

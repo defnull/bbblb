@@ -2,6 +2,9 @@ import re
 from bbblb import model
 import click
 
+from bbblb.services import ServiceRegistry
+from bbblb.services.db import DBContext
+
 from . import main, async_command
 
 
@@ -12,10 +15,12 @@ def override():
 
 @override.command("list")
 @click.argument("tenant", required=False)
-@async_command(db=True)
-async def list_(tenant: str):
+@async_command()
+async def list_(obj: ServiceRegistry, tenant: str):
     """List overrides for all or a specific tenant."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+
+    async with db.session() as session:
         if tenant:
             stmt = model.Tenant.select(name=tenant)
         else:
@@ -25,9 +30,10 @@ async def list_(tenant: str):
         if tenant and not tenants:
             click.echo(f"Tenant {tenant!r} not found")
             raise SystemExit(1)
-        for tenant in tenants:
-            for key, value in sorted(tenant.overrides.items()):
-                click.echo(f"{tenant.name}: {key}{value}")
+
+        for ten in tenants:
+            for key, value in sorted(ten.overrides.items()):
+                click.echo(f"{ten.name}: {key}{value}")
 
 
 @override.command("set")
@@ -36,8 +42,8 @@ async def list_(tenant: str):
 )
 @click.argument("tenant")
 @click.argument("overrides", nargs=-1, metavar="NAME=VALUE")
-@async_command(db=True)
-async def set_(clear: bool, tenant: str, overrides: list[str]):
+@async_command()
+async def set_(obj: ServiceRegistry, clear: bool, tenant: str, overrides: list[str]):
     """Override create call parameters for a given tenant.
 
     You can define any number of create parameter overrides per tenant as
@@ -51,7 +57,8 @@ async def set_(clear: bool, tenant: str, overrides: list[str]):
     parameters (e.g. duration or maxParticipants), or '+' to add items
     to a comma separated list parameter (e.g. disabledFeatures).
     """
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
         db_tenant = (
             await session.execute(model.Tenant.select(name=tenant))
         ).scalar_one_or_none()
@@ -66,11 +73,12 @@ async def set_(clear: bool, tenant: str, overrides: list[str]):
             raise SystemExit(1)
 
         for override in overrides:
-            m = re.match("^([a-zA-Z0-9-_]+)([=?<-])(.*)$", override)
+            m = re.match("^([a-zA-Z0-9-_]+)([=?<+])(.*)$", override)
             if not m:
                 click.echo(f"Failed to parse override {override!r}")
                 raise SystemExit(1)
             name, operator, value = m.groups()
+            assert operator in ("=", "?", "<", "+")
             db_tenant.add_override(name, operator, value)
 
         await session.commit()
@@ -80,10 +88,12 @@ async def set_(clear: bool, tenant: str, overrides: list[str]):
 @override.command()
 @click.argument("tenant")
 @click.argument("overrides", nargs=-1, metavar="NAME")
-@async_command(db=True)
-async def unset(tenant: str, overrides: list[str]):
+@async_command()
+async def unset(obj: ServiceRegistry, tenant: str, overrides: list[str]):
     """Remove overrides from a given tenant."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+
+    async with db.session() as session:
         db_tenant = (
             await session.execute(model.Tenant.select(name=tenant))
         ).scalar_one_or_none()

@@ -60,37 +60,45 @@ Poll interval in seconds for the background server health and meeting checker
 
 ``POLL_FAIL`` (type: ``int``, default: ``3``)
 
-Number of poll errors after which a server is marked OFFLINE and all meetings on it are considered lost.
+Number of failed create calls or health checks after which we give up on an
+UNSTABLE server and mark it as OFFLINE. All remaining meetings are dropped,
+so they can be re-created on another server.
 
 ``POLL_RECOVER`` (type: ``int``, default: ``5``)
 
-Number of successfull polls in a row before a server is considered ONLINE again.
+Number of successfull health checks in a row after which an OFFLINE or UNSTABLE
+server is considered to be AVAILABLE again.
 
-``LOADFACTOR_MEETING`` (type: ``float``, default: ``15.0``)
+``LOAD_BASE`` (type: ``float``, default: ``5.0``)
 
-Expected base load per meeting.
+Base load counted for each meeting.
 
-``LOADFACTOR_SIZE`` (type: ``float``, default: ``1.0``)
+``LAOD_USER`` (type: ``float``, default: ``1.0``)
 
-Expected additional load per user in a meeting
+Additional load counted for each user in a meeting.
 
-``LOADFACTOR_VOICE`` (type: ``float``, default: ``0.5``)
+``LOAD_VOICE`` (type: ``float``, default: ``0.5``)
 
-Expected additional load per voice user
+Additional load counted for each voice user in a meeting.
 
-``LOADFACTOR_VIDEO`` (type: ``float``, default: ``0.5``)
+``LOAD_VIDEO`` (type: ``float``, default: ``0.5``)
 
-Expected additional load per video user
+Additional load counted for each video user in a meeting.
 
-``LOADFACTOR_INITIAL`` (type: ``float``, default: ``75.0``)
+``LOAD_PENALTY`` (type: ``float``, default: ``20.0``)
 
-Initial load penalty for new meetings.
-This value is used to predict the future load for new meetings and should
-match the load of a 'typical' meeting on your cluster. The penalty will
-slowly decrease over time until we can assume that the meeting won't
-suddenly grow anymore.
-The idea is to avoid the 'trampling herd' effect where multiple meetings
-are started in a short time and would otherwise end up on the same server.
+Additional load penalty for new meetings.
+New meetings are counted with a higher load until their actual
+load has stabilized to avoid uneven distribution during peak
+hours.
+The load penalty should roughly match the load of a 'typical'
+meeting on your cluster and will decrease over time based on
+meeting age. See LOAD_COOLDOWN.
+
+``LOAD_COOLDOWN`` (type: ``float``, default: ``30``)
+
+Number of minutes after which new meetings are no longer impacted
+by LOAD_PENALTY. The applied penalty decreases linearly over time.
 
 ``MAX_ITEMS`` (type: ``int``, default: ``1000``)
 

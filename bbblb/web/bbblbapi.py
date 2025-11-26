@@ -7,12 +7,14 @@ import logging
 import jwt
 
 from bbblb.web import bbbapi
-from bbblb import bbblib, model, recordings
-from bbblb.settings import config
+from bbblb import model
 
 from starlette.requests import Request
 from starlette.routing import Route
 from starlette.responses import Response, JSONResponse
+
+from bbblb.web import ApiRequestContext
+from bbblb.services.recording import RecordingManager
 
 LOG = logging.getLogger(__name__)
 
@@ -25,7 +27,8 @@ def api(route: str, methods=["GET", "POST"], name: str | None = None):
         @functools.wraps(func)
         async def wrapper(request, *args, **kwargs):
             try:
-                out = await func(request)
+                async with BBBLBApiRequest(request) as ctx:
+                    out = await func(ctx)
             except ApiError as exc:
                 out = exc.to_response()
             except BaseException:
@@ -40,6 +43,15 @@ def api(route: str, methods=["GET", "POST"], name: str | None = None):
         return wrapper
 
     return decorator
+
+
+class BBBLBApiRequest(ApiRequestContext):
+    _auth = None
+
+    async def auth(self):
+        if not self._auth:
+            self._auth = await AuthContext.from_request(self, self.request)
+        return self._auth
 
 
 class ApiError(RuntimeError):
@@ -88,10 +100,10 @@ class AuthContext:
     def sub(self):
         return self.claims["sub"]
 
-    def has_scope(self, *scopes):
+    def has_scope(self, *scopes: str):
         return any(scope in self.scopes for scope in scopes)
 
-    def ensure_scope(self, *scopes):
+    def ensure_scope(self, *scopes: str):
         """Ensure that the token has one of the given scopes. Return the matching scope."""
         if "admin" in self.scopes:
             return "admin"
@@ -103,7 +115,9 @@ class AuthContext:
         raise ApiError(401, "Access denied", "This API is protected")
 
     @classmethod
-    async def from_request(cls, request: Request) -> "AuthContext":
+    async def from_request(
+        cls, ctx: ApiRequestContext, request: Request
+    ) -> "AuthContext":
         auth = request.headers.get("Authorization")
         if not auth:
             raise ApiError(
@@ -116,31 +130,29 @@ class AuthContext:
                 raise ApiError(401, "Access denied", "Unsupported Authorization type")
 
             header = jwt.get_unverified_header(credentials)
-            kid = header.get("kid")
+            kid = header.get("kid")  # type: str|None
             if kid and kid.startswith("bbb:"):
-                async with model.session() as session:
-                    server = await model.Server.find(session, domain=kid[4:])
+                server = await model.Server.find(ctx.session, domain=kid[4:])
                 if not server:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(
                     credentials,
                     server.secret,
                     algorithms=["HS256"],
-                    audience=config.DOMAIN,
+                    audience=ctx.config.DOMAIN,
                 )
                 payload["scope"] = SERVER_SCOPE
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
             elif kid and kid.startswith("tenant:"):
-                async with model.session() as session:
-                    tenant = await model.Tenant.find(session, name=kid[7:])
+                tenant = await model.Tenant.find(ctx.session, name=kid[7:])
                 if not tenant:
                     raise ApiError(401, "Access denied", "Unknown key identifier")
                 payload = jwt.decode(
                     credentials,
                     tenant.secret,
                     algorithms=["HS256"],
-                    audience=config.DOMAIN,
+                    audience=ctx.config.DOMAIN,
                 )
                 payload["scope"] = TENANT_SCOPE
                 payload["sub"] = tenant.name
@@ -150,9 +162,9 @@ class AuthContext:
             else:
                 payload = jwt.decode(
                     credentials,
-                    config.SECRET,
+                    ctx.config.SECRET,
                     algorithms=["HS256"],
-                    audience=config.DOMAIN,
+                    audience=ctx.config.DOMAIN,
                 )
                 return AuthContext(payload)
         except jwt.exceptions.InvalidAudienceError:
@@ -174,60 +186,60 @@ class AuthContext:
 
 
 @api("v1/callback/{uuid}/end/{sig}", name="bbblb:callback_end")
-async def handle_callback_end(request: Request):
+async def handle_callback_end(ctx: BBBLBApiRequest):
     """Handle the meetingEndedURL callback"""
 
     try:
-        meeting_uuid = request.path_params["uuid"]
-        callback_sig = request.path_params["sig"]
+        meeting_uuid = ctx.request.path_params["uuid"]
+        callback_sig = ctx.request.path_params["sig"]
     except (KeyError, ValueError):
         LOG.warning("Callback called with missing or invalid parameters")
         return Response("Invalid callback URL", 400)
 
     # Verify callback signature
     sig = f"bbblb:callback:end:{meeting_uuid}".encode("ASCII")
-    sig = hmac.digest(config.SECRET.encode("UTF8"), sig, hashlib.sha256)
+    sig = hmac.digest(ctx.config.SECRET.encode("UTF8"), sig, hashlib.sha256)
     if not hmac.compare_digest(sig, bytes.fromhex(callback_sig)):
         LOG.warning("Callback signature mismatch")
         return Response("Access denied, signature check failed", 401)
 
-    async with model.session() as session, session.begin():
+    async with ctx.session.begin():
         # Check if we have to notify a frontend
         stmt = model.Callback.select(uuid=meeting_uuid, type=model.CALLBACK_TYPE_END)
-        callback = (await session.execute(stmt)).scalar_one_or_none()
+        callback = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if callback:
             if callback.forward:
                 # Fire and forget callback forward task
                 asyncio.ensure_future(
-                    bbblib.trigger_callback(
-                        "GET", callback.forward, params=request.query_params
+                    ctx.bbb.trigger_callback(
+                        "GET", callback.forward, params=ctx.request.query_params
                     )
                 )
-            await session.delete(callback)
+            await ctx.session.delete(callback)
 
         # Mark meeting as ended, if still present
         stmt = model.Meeting.select(uuid=meeting_uuid)
-        meeting = (await session.execute(stmt)).scalar_one_or_none()
+        meeting = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if meeting:
             LOG.info("Meeting ended (callback): {meeting}")
-            await bbbapi.forget_meeting(session, meeting)
+            await bbbapi.forget_meeting(ctx.session, meeting)
 
     return Response("OK", 200)
 
 
 @api("v1/callback/{uuid}/{type}", name="bbblb:callback_proxy")
-async def handle_callback_proxy(request: Request):
+async def handle_callback_proxy(ctx: BBBLBApiRequest):
     try:
-        meeting_uuid = request.path_params["uuid"]
-        callback_type = request.path_params["type"]
+        meeting_uuid = ctx.request.path_params["uuid"]
+        callback_type = ctx.request.path_params["type"]
     except (KeyError, ValueError):
         LOG.warning("Callback called with missing or invalid parameters")
         return Response("Invalid callback URL", 400)
 
     body = bytearray()
-    async for chunk in request.stream():
+    async for chunk in ctx.request.stream():
         body.extend(chunk)
-        if len(body) > config.MAX_BODY:
+        if len(body) > ctx.config.MAX_BODY:
             return Response("Request Entity Too Large", 413)
 
     try:
@@ -236,22 +248,21 @@ async def handle_callback_proxy(request: Request):
     except (UnicodeDecodeError, KeyError, IndexError):
         return Response("Invalid request", 400)
 
-    async with model.session() as session:
-        stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
-        callbacks = (await session.execute(stmt)).scalars().all()
-        if not callbacks:
-            # Strange, there should be at least one. Already fired?
-            return Response("OK", 200)
+    stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
+    callbacks = (await ctx.session.execute(stmt)).scalars().all()
+    if not callbacks:
+        # Strange, there should be at least one. Already fired?
+        return Response("OK", 200)
 
-        try:
-            origin = callbacks[0].server
-            payload = jwt.decode(payload, origin.secret, algorithms=["HS256"])
-        except BaseException:
-            return Response("Access denied, signature check failed", 401)
+    try:
+        origin = callbacks[0].server
+        payload = jwt.decode(payload, origin.secret, algorithms=["HS256"])
+    except BaseException:
+        return Response("Access denied, signature check failed", 401)
 
-        # Find and trigger callbacks
-        for callback in callbacks:
-            asyncio.create_task(bbblib.fire_callback(callback, payload, clear=True))
+    # Find and trigger callbacks
+    for callback in callbacks:
+        asyncio.create_task(ctx.bbb.fire_callback(callback, payload, clear=True))
 
     return Response("OK", 200)
 
@@ -262,11 +273,11 @@ async def handle_callback_proxy(request: Request):
 
 
 @api("v1/recording/upload", methods=["POST"], name="bbblb:upload")
-async def handle_recording_upload(request: Request):
-    auth = await AuthContext.from_request(request)
+async def handle_recording_upload(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
     auth.ensure_scope("rec:upload", SERVER_SCOPE)
 
-    ctype = request.headers["content-type"]
+    ctype = ctx.request.headers.get("content-type")
     if ctype != "application/x-tar":
         return JSONResponse(
             {
@@ -277,12 +288,13 @@ async def handle_recording_upload(request: Request):
             headers={"Accept-Post": "application/x-tar"},
         )
 
-    force_tenant = request.query_params.get("tenant")
+    force_tenant = ctx.request.query_params.get("tenant")
 
     try:
-        importer = request.app.state.importer
-        assert isinstance(importer, recordings.RecordingImporter)
-        task = await importer.start_import(request.stream(), force_tenant=force_tenant)
+        importer = ctx.services.get("importer", RecordingManager)
+        task = await importer.start_import(
+            ctx.request.stream(), force_tenant=force_tenant
+        )
         return JSONResponse(
             {"message": "Import accepted", "importId": task.import_id}, status_code=202
         )
@@ -294,29 +306,28 @@ async def handle_recording_upload(request: Request):
 
 
 @api("v1/tenant", methods=["GET"])
-async def handle_tenants_list(request: Request):
-    auth = await AuthContext.from_request(request)
+async def handle_tenants_list(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
     auth.ensure_scope("tenant:list")
 
-    async with model.session() as session:
-        stmt = model.Tenant.select().order_by(model.Tenant.name)
-        tenants = (await session.execute(stmt)).scalars()
-        return {
-            "tenants": [
-                {"name": t.name, "realm": t.realm, "secret": t.secret} for t in tenants
-            ]
-        }
+    stmt = model.Tenant.select().order_by(model.Tenant.name)
+    tenants = (await ctx.session.execute(stmt)).scalars()
+    return {
+        "tenants": [
+            {"name": t.name, "realm": t.realm, "secret": t.secret} for t in tenants
+        ]
+    }
 
 
 @api("v1/tenant/{name}", methods=["POST"])
-async def handle_tenant_post(request: Request):
-    auth = await AuthContext.from_request(request)
-    tenant_name = request.path_params["name"]
-    body = await request.json()
+async def handle_tenant_post(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
+    tenant_name = ctx.request.path_params["name"]
+    body = await ctx.request.json()
 
-    async with model.session() as session:
+    async with ctx.session.begin():
         stmt = model.Tenant.select(name=tenant_name)
-        tenant = (await session.execute(stmt)).scalar_one_or_none()
+        tenant = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if not tenant:
             auth.ensure_scope("tenant:create")
             tenant = model.Tenant(name=tenant_name)
@@ -333,47 +344,44 @@ async def handle_tenant_post(request: Request):
                 f"Missing parameter in request body: {e.args[0]}",
             )
 
-        session.add(tenant)
-        await session.commit()
+        ctx.session.add(tenant)
 
 
 @api("v1/tenant/{name}/delete", methods=["POST"])
-async def handle_tenant_delete(request: Request):
-    auth = await AuthContext.from_request(request)
-    tenant_name = request.path_params["name"]
+async def handle_tenant_delete(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
+    tenant_name = ctx.request.path_params["name"]
     auth.ensure_scope("tenant:delete")
 
     if auth.tenant and auth.tenant != tenant_name:
         raise ApiError(401, "Access denied", "This API is protected")
 
-    async with model.session() as session:
+    async with ctx.session.begin():
         stmt = model.Tenant.select(name=tenant_name)
-        tenant = (await session.execute(stmt)).scalar_one_or_none()
+        tenant = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if tenant:
-            await session.delete(tenant)
-            await session.commit()
+            await ctx.session.delete(tenant)
 
 
 @api("v1/server", methods=["GET"])
-async def handle_server_list(request: Request):
-    auth = await AuthContext.from_request(request)
+async def handle_server_list(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
     auth.ensure_scope("server:list")
 
-    async with model.session() as session:
-        stmt = model.Server.select().order_by(model.Server.domain)
-        servers = (await session.execute(stmt)).scalars()
-        return {"servers": [{"domain": s.domain, "secret": s.secret} for s in servers]}
+    stmt = model.Server.select().order_by(model.Server.domain)
+    servers = (await ctx.session.execute(stmt)).scalars()
+    return {"servers": [{"domain": s.domain, "secret": s.secret} for s in servers]}
 
 
 @api("v1/server/{domain}", methods=["POST"])
-async def handle_server_post(request: Request):
-    auth = await AuthContext.from_request(request)
-    domain = request.path_params["domain"]
-    body = await request.json()
+async def handle_server_post(ctx: BBBLBApiRequest):
+    auth = await ctx.auth()
+    domain = ctx.request.path_params["domain"]
+    body = await ctx.request.json()
 
-    async with model.session() as session:
+    async with ctx.session.begin():
         stmt = model.Server.select(domain=domain)
-        server = (await session.execute(stmt)).scalar_one_or_none()
+        server = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if not server:
             auth.ensure_scope("server:create")
             server = model.Server(domain=domain)
@@ -389,25 +397,27 @@ async def handle_server_post(request: Request):
                 f"Missing parameter in request body: {e.args[0]}",
             )
 
-        session.add(server)
-        await session.commit()
+        ctx.session.add(server)
+
+
+async def handle_server_switch(ctx: BBBLBApiRequest, enable: bool):
+    auth = await ctx.auth()
+    domain = ctx.request.path_params["domain"]
+    auth.ensure_scope("server:state")
+
+    async with ctx.session.begin():
+        stmt = model.Server.select(domain=domain)
+        server = (await ctx.session.execute(stmt)).scalar_one_or_none()
+        if not server:
+            raise ApiError(404, "Unknown server", f"Server not known: {domain}")
+        server.enabled = enable
 
 
 @api("v1/server/{name}/enable", methods=["POST"])
-async def handle_server_enable(request: Request, enable=True):
-    auth = await AuthContext.from_request(request)
-    domain = request.path_params["domain"]
-    auth.ensure_scope("server:state")
-
-    async with model.session() as session:
-        stmt = model.Server.select(domain=domain)
-        server = (await session.execute(stmt)).scalar_one_or_none()
-        if not server:
-            raise ApiError(404, "Unknown server", f"Server not known: {domain}")
-        server.enabled = True
-        await session.commit()
+async def handle_server_enable(ctx: BBBLBApiRequest, enable=True):
+    return await handle_server_switch(ctx, True)
 
 
 @api("v1/server/{name}/disable", methods=["POST"])
-async def handle_server_disable(request: Request):
-    return await handle_server_enable(request, enable=False)
+async def handle_server_disable(ctx: BBBLBApiRequest):
+    return await handle_server_switch(ctx, False)

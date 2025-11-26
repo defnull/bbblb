@@ -14,9 +14,12 @@ import uuid
 import lxml.etree
 import urllib.parse
 
-from bbblb import bbblib, model, utils
-from bbblb.settings import config
-from bbblb.bbblib import ETree, XML
+from bbblb import model, utils
+from bbblb.services import BackgroundService
+from bbblb.services.bbb import BBBHelper
+from bbblb.services.db import DBContext
+from bbblb.settings import BBBLBConfig
+from bbblb.lib.bbb import ETree, XML, SubElement
 
 LOG = logging.getLogger(__name__)
 
@@ -34,7 +37,7 @@ class RecordingImportError(RuntimeError):
     pass
 
 
-def format_xml(playback: model.PlaybackFormat) -> ETree:
+def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> ETree:
     orig = lxml.etree.fromstring(playback.xml)
     playback_domain = config.PLAYBACK_DOMAIN.format(
         DOMAIN=config.DOMAIN, REALM=playback.recording.tenant.realm
@@ -47,14 +50,13 @@ def format_xml(playback: model.PlaybackFormat) -> ETree:
     # The field names and sometimes also values differ a lot between
     # metadata.xml and getRecordings. Here is what we know:
     if (value := orig.findtext("link")) is not None:
-        result.append(XML("url", value))
+        SubElement(result, "url").text = value
     if (value := orig.findtext("processing_time")) is not None:
-        result.append(XML("processingTime", value))
+        SubElement(result, "processingTime").text = value
     if (value := orig.findtext("duration")) is not None:
-        value = str(int(value) // 1000)
-        result.append(XML("length", value))
+        SubElement(result, "length").text = str(int(value) // 1000)
     if (value := orig.findtext("size")) is not None:
-        result.append(XML("size", value))
+        SubElement(result, "size").text = value
 
     # Append everything from the 'extentions' subelement (e.g. extensions/preview)
     result.extend(orig.iterfind("extensions/*"))
@@ -81,43 +83,55 @@ def _sanity_pathname(name: str):
         raise ValueError("Path name cannot be empty")
     for bad in "/\\:":
         if bad in name:
-            raise ValueError(f"Unexpected character in path name: {name:r}")
+            raise ValueError(f"Unexpected character in path name: {name!r}")
     return name
 
 
-class RecordingImporter:
-    def __init__(self, basedir: Path, concurrency=2):
-        self.base_dir = basedir.resolve()
+class RecordingManager(BackgroundService):
+    def __init__(self, config: BBBLBConfig):
+        self.base_dir = (config.PATH_DATA / "recordings").resolve()
         self.inbox_dir = self.base_dir / "inbox"
         self.failed_dir = self.base_dir / "failed"
         self.work_dir = self.base_dir / "work"
         self.public_dir = self.base_dir / "public"
         self.storage_dir = self.base_dir / "storage"
         self.deleted_dir = self.base_dir / "deleted"
-
-        self.maxtasks = asyncio.Semaphore(concurrency)
-        self.pool = ThreadPoolExecutor(
-            max_workers=concurrency + 2, thread_name_prefix="recording-importer-"
-        )
+        max_threads = config.RECORDING_THREADS
+        self.maxtasks = asyncio.Semaphore(max_threads)
+        self.pool = ThreadPoolExecutor(thread_name_prefix="rec-")
         self.tasks: dict[str, "RecordingImportTask"] = {}
 
-    async def __aenter__(self):
-        await self.init()
-        return self
+        self.poll_interval = config.POLL_INTERVAL
 
-    async def __aexit__(self, *a):
-        await self.close()
+    async def on_start(self, db: DBContext, bbb: BBBHelper):
+        self.db = db
+        self.bbb = bbb
+        await super().on_start()
+
+    async def run(self):
+        await self.init()
+        try:
+            while True:
+                await asyncio.sleep(self.poll_interval)
+                await self.pickup_waiting()
+                await self.cleanup()
+        finally:
+            await self.close()
 
     async def init(self):
         # Create all directories we need, if missing
         for dir in (d for d in self.__dict__.values() if isinstance(d, Path)):
             if dir and not dir.exists():
                 await self._in_pool(dir.mkdir, parents=True, exist_ok=True)
-        # TODO: Cleanup *.failed and *.canceled work directories.
 
-        # Pick up task from the inbox directory
+    async def pickup_waiting(self):
         for file in self.inbox_dir.glob("*.tar"):
             self._schedule(RecordingImportTask(self, file.stem, file))
+        pass
+
+    async def cleanup(self):
+        # TODO: Cleanup *.failed and *.canceled work directories.
+        pass
 
     async def close(self):
         for task in list(self.tasks.values()):
@@ -180,6 +194,9 @@ class RecordingImporter:
         return task
 
     def _schedule(self, task: "RecordingImportTask"):
+        if task.import_id in self.tasks:
+            return
+
         self.tasks[task.import_id] = task
 
         async def waiter():
@@ -193,7 +210,7 @@ class RecordingImporter:
             finally:
                 self.tasks.pop(task.import_id, None)
 
-        asyncio.create_task(waiter(), name=str(task))
+        asyncio.create_task(waiter(), name=f"rec-{task.import_id}")
 
     def get_storage_dir(self, tenant: str, record_id: str, format: str):
         tenant = _sanity_pathname(tenant)
@@ -272,7 +289,7 @@ class RecordingImporter:
 class RecordingImportTask:
     def __init__(
         self,
-        importer: RecordingImporter,
+        importer: RecordingManager,
         import_id: str,
         source: Path,
         force_tenant: str | None = None,
@@ -446,38 +463,43 @@ class RecordingImportTask:
     async def _process_one(self, metafile: Path):
         try:
             xml = await self._in_pool(lxml.etree.parse, metafile)
+            assert isinstance(xml, ETree)
         except BaseException:
             raise RecordingImportError(f"Failed to parse metadata.xml: {metafile}")
 
         # Extract info info from metadata.xml
-        record_id = str(xml.findtext("id") or "")
-        if not utils.RE_RECORD_ID.match(record_id):
+        record_id = xml.findtext("id")
+        if not (record_id and utils.RE_RECORD_ID.match(record_id)):
             raise RecordingImportError(
-                f"Invalid or missing recording ID: {record_id:r}"
+                f"Invalid or missing recording ID: {record_id!r}"
             )
-        format_name = str(xml.findtext("playback/format") or "")
-        if not utils.RE_FORMAT_NAME.match(format_name):
+        format_name = xml.findtext("playback/format")
+        if not (format_name and utils.RE_FORMAT_NAME.match(format_name)):
             raise RecordingImportError(
-                f"Invalid or missing playback format name: {format_name:r}"
+                f"Invalid or missing playback format name: {format_name!r}"
             )
-        tenant_name = str(self.force_tenant or xml.findtext("meta/bbblb-tenant") or "")
-        if not utils.RE_TENANT_NAME.match(tenant_name):
+        tenant_name = self.force_tenant or xml.findtext("meta/bbblb-tenant")
+        if not (tenant_name and utils.RE_TENANT_NAME.match(tenant_name)):
             raise RecordingImportError(
-                f"Invalid or missing tenant information: {tenant_name:r}"
+                f"Invalid or missing tenant information: {tenant_name!r}"
             )
-        meta = {tag.tag: tag.text for tag in xml.find("meta")}
+        metatags = xml.find("meta")
+        assert metatags is not None  # For typing, we know it's there
+        meta = {tag.tag: tag.text for tag in metatags if tag.text}
         external_id = meta["meetingId"] = utils.remove_scope(meta["meetingId"])
         started = datetime.datetime.fromtimestamp(
-            int(xml.findtext("start_time")) / 1000, tz=datetime.timezone.utc
+            int(xml.findtext("start_time") or 0) / 1000, tz=datetime.timezone.utc
         )
         ended = datetime.datetime.fromtimestamp(
-            int(xml.findtext("end_time")) / 1000, tz=datetime.timezone.utc
+            int(xml.findtext("end_time") or 0) / 1000, tz=datetime.timezone.utc
         )
-        participants = int(xml.findtext("participants"))
+        participants = int(xml.findtext("participants") or 0)
         state = model.RecordingState.UNPUBLISHED
+        playback_node = xml.find("playback")
+        assert playback_node is not None  # For typing, we know it's there
 
         # Fetch tenant this record belongs to, or fail
-        async with model.session() as session:
+        async with self.importer.db.session() as session:
             try:
                 tenant = await model.Tenant.get(session, name=tenant_name)
             except model.NoResultFound:
@@ -491,7 +513,7 @@ class RecordingImportTask:
         self._breakpoint()
 
         # Create or fetch recording entity
-        async with model.session() as session:
+        async with self.importer.db.session() as session:
             stmt = model.Recording.select(record_id=record_id)
             record, record_created = await model.get_or_create(
                 session,
@@ -513,7 +535,7 @@ class RecordingImportTask:
                 # TODO: Merge existing with new record?
 
         # Create or fetch format entity
-        async with model.session() as session:
+        async with self.importer.db.session() as session:
             stmt = model.PlaybackFormat.select(recording=record, format=format_name)
             format, format_created = await model.get_or_create(
                 session,
@@ -521,7 +543,7 @@ class RecordingImportTask:
                 lambda: model.PlaybackFormat(
                     recording=record,
                     format=format_name,
-                    xml=lxml.etree.tostring(xml.find("playback")).decode("UTF-8"),
+                    xml=lxml.etree.tostring(playback_node).decode("UTF-8"),
                 ),
             )
             if not format_created:
@@ -533,7 +555,7 @@ class RecordingImportTask:
         # We never know when the last import happend, so we keep the
         # callbacks around for a while. (TODO)
         if "bbblb-uuid" in record.meta:
-            async with model.session() as session:
+            async with self.importer.db.session() as session:
                 stmt = model.Callback.select(
                     uuid=record.meta["bbblb-uuid"], type=model.CALLBACK_TYPE_REC
                 )
@@ -543,7 +565,7 @@ class RecordingImportTask:
             # complete if the front-end is unresponsive.
             for callback in callbacks:
                 asyncio.create_task(
-                    bbblib.fire_callback(
+                    self.importer.bbb.fire_callback(
                         callback,
                         {"meeting_id": external_id, "record_id": record_id},
                         clear=False,

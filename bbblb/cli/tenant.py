@@ -1,8 +1,11 @@
 import re
 from bbblb import model
-from bbblb.settings import config as cfg
+from bbblb.services import ServiceRegistry
+from bbblb.services.db import DBContext
 import secrets
 import click
+
+from bbblb.settings import BBBLBConfig
 
 from . import main, async_command
 
@@ -24,9 +27,13 @@ def tenant():
     help="Set the tenant secret. Defaults to a randomly generated string for new tenants.",
 )
 @click.argument("name")
-@async_command(db=True)
-async def create(update: bool, name: str, realm: str | None, secret: str | None):
-    async with model.session() as session:
+@async_command()
+async def create(
+    obj: ServiceRegistry, update: bool, name: str, realm: str | None, secret: str | None
+):
+    db = await obj.use("db", DBContext)
+    cfg = await obj.use("config", BBBLBConfig)
+    async with db.session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
         ).scalar_one_or_none()
@@ -47,9 +54,10 @@ async def create(update: bool, name: str, realm: str | None, secret: str | None)
 
 @tenant.command()
 @click.argument("name")
-@async_command(db=True)
-async def remove(name: str):
-    async with model.session() as session:
+@async_command()
+async def remove(obj: ServiceRegistry, name: str):
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
         ).scalar_one_or_none()
@@ -62,10 +70,11 @@ async def remove(name: str):
 
 
 @tenant.command("list")
-@async_command(db=True)
-async def list_(with_secrets=False):
+@async_command()
+async def list_(obj: ServiceRegistry):
     """List all tenants with their realms and secrets."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:
             out = f"{tenant.name} {tenant.realm} {tenant.secret}"
@@ -78,8 +87,8 @@ async def list_(with_secrets=False):
 )
 @click.argument("name")
 @click.argument("overrides", nargs=-1, metavar="NAME=VALUE")
-@async_command(db=True)
-async def override(clear: bool, name: str, overrides: list[str]):
+@async_command()
+async def override(obj: ServiceRegistry, clear: bool, name: str, overrides: list[str]):
     """Override create call parameters.
 
     You can define any number of create parameter overrides per tenant as
@@ -93,7 +102,8 @@ async def override(clear: bool, name: str, overrides: list[str]):
     paxParticipants), or '+' to add items to a comma separated list
     parameter (e.g. disableFeatures).
     """
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+    async with db.session() as session, session.begin():
         tenant = (
             await session.execute(model.Tenant.select(name=name))
         ).scalar_one_or_none()
@@ -110,5 +120,3 @@ async def override(clear: bool, name: str, overrides: list[str]):
                 raise SystemExit(1)
             name, operator, value = m.groups()
             tenant.add_setting(name, operator, value)
-
-        session.commit()

@@ -19,7 +19,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project
 
 # Install bbblb
-ADD . /app
+COPY pyproject.toml uv.lock README.md ./
+COPY bbblb ./bbblb/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked
 

@@ -1,17 +1,7 @@
-import asyncio
-from contextlib import asynccontextmanager
 import enum
 import logging
-import os
-from pathlib import Path
-import secrets
-import socket
 import typing
 from uuid import UUID
-import asyncpg
-import sqlalchemy
-from sqlalchemy.ext.asyncio import create_async_engine
-
 
 import datetime
 from typing import List
@@ -27,25 +17,21 @@ from sqlalchemy import (
     Text,
     TypeDecorator,
     UniqueConstraint,
-    delete,
-    insert,
-    update,
-    event,
+    select,  # noqa: F401
+    delete,  # noqa: F401
+    update,  # noqa: F401
+    insert,  # noqa: F401
 )
-from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncAttrs
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    AsyncEngine,
-    AsyncConnection,
-    AsyncSessionTransaction,
+from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession
+
+from sqlalchemy.orm import (
+    DeclarativeBase,
+    Mapped,
+    mapped_column,
+    relationship,
+    validates,
 )
-from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
-from sqlalchemy.orm import validates
+
 from sqlalchemy.exc import (
     NoResultFound,  # noqa: F401
     IntegrityError,  # noqa: F401
@@ -54,183 +40,14 @@ from sqlalchemy.exc import (
 )
 
 
-from bbblb import migrations
-
 LOG = logging.getLogger(__name__)
 
 P = typing.ParamSpec("P")
 R = typing.TypeVar("R")
 
-PROCESS_IDENTITY = f"{socket.gethostname()}-{os.getpid()}-{secrets.token_hex(4)}"
-
 
 def utcnow():
     return datetime.datetime.now(tz=datetime.timezone.utc)
-
-
-_engine: AsyncEngine | None = None
-_sessionmaker: async_sessionmaker[AsyncSession] | None = None
-
-
-def _async_db_url(db_url) -> sqlalchemy.engine.url.URL:
-    if isinstance(db_url, str):
-        db_url = sqlalchemy.engine.url.make_url(db_url)
-    if db_url.drivername == "sqlite":
-        return db_url.set(drivername="sqlite+aiosqlite")
-    elif db_url.drivername == "postgresql":
-        return db_url.set(drivername="postgresql+asyncpg")
-    else:
-        raise ValueError(
-            f"Unsupported database driver name: {db_url} (must be sqlite:// or postgresql://)"
-        )
-
-
-def _sync_db_url(db_url) -> sqlalchemy.engine.url.URL:
-    if isinstance(db_url, str):
-        db_url = sqlalchemy.engine.url.make_url(db_url)
-    if db_url.drivername == "sqlite":
-        return db_url
-    elif db_url.drivername == "postgresql":
-        return db_url.set(drivername="postgresql+psycopg")
-    else:
-        raise ValueError(
-            f"Unsupported database driver name: {db_url} (must be sqlite:// or postgresql://)"
-        )
-
-
-async def init_engine(db_url: str, echo=False, create=False, migrate=False):
-    global _engine, _sessionmaker
-
-    if _engine or _sessionmaker:
-        raise RuntimeError("Database engine already initialized")
-
-    try:
-        if create:
-            await create_database(db_url, echo)
-
-        current, target = await check_migration_state(db_url, echo)
-        if current != target and migrate:
-            await migrate_db(db_url, echo)
-        elif current != target:
-            LOG.error(f"Expected schema revision {target!r} but found {current!r}.")
-            raise RuntimeError("Database migrations pending. Run migrations first.")
-
-        try:
-            _engine = create_async_engine(_async_db_url(db_url), echo=echo)
-            _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False)
-
-            # Enable foreign key support in sqlite
-            if "sqlite" in _engine.url.drivername:
-
-                @event.listens_for(_engine.sync_engine, "connect")
-                def _fk_pragma_on_connect(conn, con_record):  # noqa
-                    conn.execute("pragma foreign_keys=ON")
-
-        except BaseException:
-            _engine = _sessionmaker = None
-            raise
-
-    except ConnectionRefusedError as e:
-        raise RuntimeError(f"Failed to connect to database: {e}")
-    except BaseException as e:
-        raise RuntimeError(f"Failed to initialize database: {e}")
-
-
-async def create_database(db_url, echo=False):
-    db_url = _async_db_url(db_url)
-    db_name = db_url.database
-    if "postgres" not in db_url.drivername:
-        return
-
-    tmp_engine = create_async_engine(
-        db_url.set(database="postgres"),
-        poolclass=sqlalchemy.pool.NullPool,
-        isolation_level="AUTOCOMMIT",
-        echo=echo,
-    )
-    try:
-        async with tmp_engine.connect() as conn:
-            result = await conn.execute(
-                text("SELECT 1 FROM pg_database WHERE datname=:dbname"),
-                {"dbname": db_name},
-            )
-
-            if not result.first():
-                LOG.info(f"Creating missing database: {db_name}")
-                await conn.execute(
-                    text(f"CREATE DATABASE {db_name} WITH ENCODING 'utf-8'")
-                )
-    except ProgrammingError as e:
-        while getattr(e, "__cause__", None):
-            e = e.__cause__
-        if not isinstance(e, asyncpg.exceptions.DuplicateDatabaseError):
-            raise e
-    finally:
-        await tmp_engine.dispose()
-
-
-async def check_migration_state(db_url, echo=False):
-    import alembic
-    import alembic.script
-    import alembic.migration
-
-    def check(conn):
-        script_dir = Path(migrations.__file__).parent
-        script = alembic.script.ScriptDirectory(script_dir)
-        context = alembic.migration.MigrationContext.configure(conn)
-        return context.get_current_revision(), script.get_current_head()
-
-    engine = create_async_engine(
-        _async_db_url(db_url), poolclass=sqlalchemy.pool.NullPool, echo=echo
-    )
-
-    async with engine.connect() as conn:
-        return await conn.run_sync(check)
-
-
-async def migrate_db(db_url, echo=False):
-    return await asyncio.to_thread(migrate_db_sync, db_url, echo)
-
-
-def migrate_db_sync(db_url, echo=False):
-    import alembic
-    import alembic.config
-    import alembic.command
-
-    db_url = _sync_db_url(db_url).render_as_string(hide_password=False)
-    alembic_dir = Path(migrations.__file__).parent
-    alembic_cfg = alembic.config.Config()
-    alembic_cfg.set_main_option("script_location", str(alembic_dir))
-    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    alembic_cfg.set_main_option("sqlalchemy.echo", str(echo))
-    alembic.command.upgrade(alembic_cfg, "heads")
-
-
-async def dispose_engine():
-    global _engine, _sessionmaker
-    if _engine:
-        await _engine.dispose()
-        _engine = _sessionmaker = None
-
-
-def session() -> AsyncSession:
-    if not _sessionmaker:
-        raise RuntimeError("Database engine not initialized")
-    return _sessionmaker()
-
-
-@asynccontextmanager
-async def begin() -> typing.AsyncIterator[AsyncSessionTransaction]:
-    async with session() as sess, sess.begin() as tx:
-        yield tx
-
-
-@asynccontextmanager
-async def connect() -> typing.AsyncIterator[AsyncConnection]:
-    if not _engine:
-        raise RuntimeError("Database engine not initialized")
-    async with _engine.begin() as conn:
-        yield conn
 
 
 async def get_or_create(
@@ -363,58 +180,6 @@ class Lock(Base):
     ts: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), insert_default=utcnow, onupdate=utcnow, nullable=False
     )
-
-    @classmethod
-    async def try_acquire(cls, name, force_release: datetime.timedelta | None = None):
-        """Try to acquire a named inter-process lock and force-release any
-        existing locks if it they are older than the force_release time limit.
-
-        This is not re-entrant. Acquiring the same lock twice will fail.
-        """
-        async with connect() as conn:
-            if force_release:
-                expire = utcnow() - force_release
-                await conn.execute(
-                    delete(cls).where(Lock.name == name, Lock.ts < expire)
-                )
-            try:
-                await conn.execute(
-                    insert(cls).values(name=name, owner=PROCESS_IDENTITY)
-                )
-                await conn.commit()
-                LOG.debug(f"Lock {name!r} acquired by {PROCESS_IDENTITY}")
-                return True
-            except IntegrityError:
-                await conn.rollback()
-                return False
-
-    @classmethod
-    async def check(cls, name):
-        """Update the lifetime of an already held lock, return true if such a
-        lock exists, false otherwise."""
-        async with connect() as conn:
-            result = await conn.execute(
-                update(cls)
-                .values(ts=utcnow())
-                .where(Lock.name == name, Lock.owner == PROCESS_IDENTITY)
-            )
-            if result.rowcount > 0:
-                LOG.debug(f"Lock {name!r} updated by {PROCESS_IDENTITY}")
-                return True
-            return False
-
-    @classmethod
-    async def try_release(cls, name):
-        """Release a named inter-process lock if it's owned by the current
-        process. Return true if such a lock existed, false otherwise."""
-        async with connect() as conn:
-            result = await conn.execute(
-                delete(cls).where(Lock.name == name, Lock.owner == PROCESS_IDENTITY)
-            )
-            if result.rowcount > 0:
-                LOG.debug(f"Lock {name!r} released by {PROCESS_IDENTITY}")
-                return True
-            return False
 
     def __str__(self):
         return f"Lock({self.name})"

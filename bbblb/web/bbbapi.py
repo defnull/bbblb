@@ -8,17 +8,22 @@ import lxml.etree
 import logging
 import sqlalchemy
 import sqlalchemy.orm
-from starlette.requests import Request
 from starlette.routing import Route
 from starlette.responses import Response, RedirectResponse, JSONResponse
 import bbblb
 from bbblb import utils
-from bbblb import bbblib
-from bbblb.utils import checked_cast
-from bbblb import recordings, model
-from bbblb.bbblib import XML, BBBClient, BBBError, ETree
-from bbblb.settings import config
-
+from bbblb.services.recording import RecordingManager, playback_to_xml
+from bbblb.lib.bbb import (
+    BBBResponse,
+    BBBError,
+    ETree,
+    SubElement,
+    make_error,
+    XML,
+    verify_checksum_query,
+)
+from bbblb import model
+from bbblb.web import ApiRequestContext
 
 LOG = logging.getLogger(__name__)
 R = typing.TypeVar("R")
@@ -37,9 +42,9 @@ def api(action: str, methods=["GET", "POST"]):
                 out = err
             except Exception as err:
                 LOG.exception("Unhandled exception")
-                out = bbblib.make_error("internalError", repr(err), 500)
+                out = make_error("internalError", repr(err), 500)
 
-            if isinstance(out, bbblib.BBBResponse):
+            if isinstance(out, BBBResponse):
                 if out._xml is not None:
                     out = to_xml(out.xml, out.status_code)
                 else:
@@ -76,29 +81,6 @@ def xml_fix_meeting_id(node: ETree, search: str, replace: str):
     return node
 
 
-class ApiRequestContext:
-    def __init__(self, request: Request):
-        self.request = request
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a, **ka):
-        if "session" in self.__dict__:
-            await self.session.close()
-
-    @functools.cached_property
-    def session(self):
-        """A request specific AsyncSession object.
-
-        The session is closed at the end of the request. It can also be
-        used in an async-with statement to ensure the session is reset at
-        the end of a code secion, or you can call reset() explicitly to
-        end any transactions and free any DB handles mid-request.
-        """
-        return model.session()
-
-
 class BBBApiRequest(ApiRequestContext):
     _tenant: model.Tenant | None = None
     _meeting: model.Meeting | None = None
@@ -109,10 +91,10 @@ class BBBApiRequest(ApiRequestContext):
         if self._tenant:
             return self._tenant
         try:
-            realm = self.request.headers.get(config.TENANT_HEADER, "__NO_REALM__")
+            realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
             self._tenant = await model.Tenant.get(self.session, realm=realm)
         except model.NoResultFound:
-            raise bbblib.make_error(
+            raise make_error(
                 "checksumError",
                 "Unknown tenant, unable to perform checksum security check",
             )
@@ -134,7 +116,7 @@ class BBBApiRequest(ApiRequestContext):
             )
             return self._meeting
         except model.NoResultFound:
-            raise bbblib.make_error(
+            raise make_error(
                 "notFound",
                 "We could not find a meeting with that meeting ID - perhaps the meeting is not yet running?",
             )
@@ -160,13 +142,13 @@ class BBBApiRequest(ApiRequestContext):
         ):
             try:
                 query_str = (await self.read_body()).decode("UTF-8")
-            except bbblib.make_error:
+            except BBBError:
                 # Unable to read enough to make a check, so technicalls this is a checksumError
-                raise bbblib.make_error(
+                raise make_error(
                     "checksumError", "Request body too large, could not verify checksum"
                 )
 
-        query, _ = bbblib.verify_checksum_query(action, query_str, [tenant.secret])
+        query, _ = verify_checksum_query(action, query_str, [tenant.secret])
         return query
 
     async def read_body(self) -> bytes:
@@ -178,8 +160,8 @@ class BBBApiRequest(ApiRequestContext):
         body = bytearray()
         async for chunk in self.request.stream():
             body += chunk
-            if len(body) > config.MAX_BODY:
-                raise bbblib.make_error("clientError", "Request body too large", 413)
+            if len(body) > self.config.MAX_BODY:
+                raise make_error("clientError", "Request body too large", 413)
         self._body = body
         return self._body
 
@@ -197,7 +179,7 @@ class BBBApiRequest(ApiRequestContext):
             if default is not None:
                 return default
             errorKey = f"missingParameter{name[0].upper()}{name[1:]}"
-            raise bbblib.make_error(errorKey, f"Missing ir invalid parameter {name}.")
+            raise make_error(errorKey, f"Missing ir invalid parameter {name}.")
 
 
 ##
@@ -245,7 +227,7 @@ async def _intercept_callbacks(
         )
     # No signed payload, so we sign the URL instead.
     sig = f"bbblb:callback:end:{meeting.uuid}".encode("ASCII")
-    sig = hmac.digest(config.SECRET.encode("UTF8"), sig, hashlib.sha256).hex()
+    sig = hmac.digest(cxt.config.SECRET.encode("UTF8"), sig, hashlib.sha256).hex()
     url = cxt.request.url_for("bbblb:callback_end", uuid=str(meeting.uuid), sig=sig)
     params["meetingEndedURL"] = str(url)
 
@@ -303,7 +285,7 @@ async def handle_create(ctx: BBBApiRequest):
     await ctx.require_param("name")  # Just check
 
     if len(scoped_id) > utils.MAX_MEETING_ID_LEN:
-        raise bbblib.make_error(
+        raise make_error(
             "sizeError",
             "Meeting ID must be between 2 and %d characters"
             % (utils.MAX_MEETING_ID_LEN - (len(scoped_id) - len(unscoped_id))),
@@ -321,10 +303,10 @@ async def handle_create(ctx: BBBApiRequest):
         stmt = model.Server.select_best(tenant).with_for_update()
         server = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if not server:
-            raise bbblib.make_error("internalError", "No suitable servers available.")
+            raise make_error("internalError", "No suitable servers available.")
 
         # Increase server load NOW (as fast as possible)
-        load = config.LOADFACTOR_INITIAL + config.LOADFACTOR_MEETING
+        load = ctx.config.LOAD_PENALTY + ctx.config.LOAD_BASE
         await ctx.session.execute(server.increment_load_stmt(load))
 
         # Try to create the meeting
@@ -343,7 +325,7 @@ async def handle_create(ctx: BBBApiRequest):
     # Enforce BBBLB specific overrides
     params["meetingID"] = scoped_id
     params["meta_bbblb-uuid"] = str(meeting.uuid)
-    params["meta_bbblb-origin"] = config.DOMAIN
+    params["meta_bbblb-origin"] = ctx.config.DOMAIN
     params["meta_bbblb-tenant"] = meeting.tenant.name
     params["meta_bbblb-server"] = meeting.server.domain
 
@@ -362,12 +344,15 @@ async def handle_create(ctx: BBBApiRequest):
         await ctx.session.close()
 
         # Create meeting on back-end
-        bbb = BBBClient(meeting.server.api_base, meeting.server.secret)
         body, ctype = None, ctx.request.headers.get("Content-Type")
         if ctype == "application/xml":
             body = await ctx.read_body()
-        upstream = await bbb.action("create", params, body=body, content_type=ctype)
-        upstream.raise_on_error()
+
+        async with ctx.bbb.connect(
+            meeting.server.api_base, meeting.server.secret
+        ) as bbb:
+            upstream = await bbb.action("create", params, body=body, content_type=ctype)
+            upstream.raise_on_error()
 
         # Success! Update meeting info if it's a new meeting
         if meeting_created:
@@ -401,14 +386,14 @@ async def handle_join(ctx: BBBApiRequest):
     meeting = await ctx.require_meeting()
     server = await meeting.awaitable_attrs.server
 
-    await ctx.session.execute(server.increment_load_stmt(config.LOADFACTOR_SIZE))
+    await ctx.session.execute(server.increment_load_stmt(ctx.config.LAOD_USER))
     await ctx.session.commit()
     await ctx.session.close()  # Give connection back to pool
 
-    bbb = BBBClient(server.api_base, server.secret)
-    params["meetingID"] = scoped_id
-    redirect_uri = bbb.encode_uri("join", params)
-    return RedirectResponse(redirect_uri)
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        params["meetingID"] = scoped_id
+        redirect_uri = bbb.encode_uri("join", params)
+        return RedirectResponse(redirect_uri)
 
 
 @api("end")
@@ -425,9 +410,9 @@ async def handle_end(ctx: BBBApiRequest):
         await ctx.session.commit()
 
     # Now try to actually end it in the backend.
-    bbb = BBBClient(server.api_base, server.secret)
-    params["meetingID"] = scoped_id
-    upstream = await bbb.action("end", params)
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        params["meetingID"] = scoped_id
+        upstream = await bbb.action("end", params)
 
     # Just pass any errors (most likely a notFound).
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
@@ -444,9 +429,9 @@ async def handle_send_chat_message(ctx: BBBApiRequest):
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
 
-    bbb = BBBClient(server.api_base, server.secret)
-    params["meetingID"] = scoped_id
-    upstream = await bbb.action("sendChatMessage", params)
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        params["meetingID"] = scoped_id
+        upstream = await bbb.action("sendChatMessage", params)
 
     if upstream.error == "notFound":
         async with ctx.session:
@@ -461,7 +446,7 @@ async def handle_send_chat_message(ctx: BBBApiRequest):
 async def handle_get_join_url(ctx: BBBApiRequest):
     # Cannot be implemmented in a load-balancer:
     # https://github.com/bigbluebutton/bigbluebutton/issues/24212
-    raise bbblib.make_error(
+    raise make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )
 
@@ -476,13 +461,14 @@ async def handle_insert_document(ctx: BBBApiRequest):
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
 
-    bbb = BBBClient(server.api_base, server.secret)
     params["meetingID"] = scoped_id
     ctype = ctx.request.headers.get("Content-Type")
     stream = ctx.request.stream()
-    upstream = await bbb.action(
-        "insertDocument", params, body=stream, content_type=ctype, expect_json=True
-    )
+
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        upstream = await bbb.action(
+            "insertDocument", params, body=stream, content_type=ctype, expect_json=True
+        )
 
     return upstream
 
@@ -497,9 +483,9 @@ async def handle_is_meeting_running(ctx: BBBApiRequest):
 
         try:
             meeting = await ctx.require_meeting()
-        except bbblib.BBBError:
+        except BBBError:
             # Not an error
-            return bbblib.BBBResponse(
+            return BBBResponse(
                 XML.response(
                     XML.returncode("SUCCESS"),
                     XML.running("false"),
@@ -508,9 +494,9 @@ async def handle_is_meeting_running(ctx: BBBApiRequest):
 
         server = await meeting.awaitable_attrs.server
 
-    bbb = BBBClient(server.api_base, server.secret)
-    params["meetingID"] = scoped_id
-    upstream = await bbb.action("isMeetingRunning", params)
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        params["meetingID"] = scoped_id
+        upstream = await bbb.action("isMeetingRunning", params)
 
     if upstream.find("running") == "false":
         async with ctx.session as session:
@@ -534,13 +520,18 @@ async def handle_get_meetings(ctx: BBBApiRequest):
         )
         servers = (await session.execute(stmt)).scalars()
 
-    result_xml: ETree = XML.response(XML.returncode("SUCCESS"), XML.meetings())
-    all_meetings = result_xml.find("meetings")
+    result_xml: ETree = XML.response(XML.returncode("SUCCESS"))
+    all_meetings = SubElement(result_xml, "meetings")
 
-    tasks: list[typing.Awaitable[bbblib.BBBResponse]] = []
+    tasks: list[typing.Awaitable[BBBResponse]] = []
+
+    async def fetch_meetings(server):
+        async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+            return await bbb.action("getMeetings", params)
+
     for server in servers:
-        api = BBBClient(server.api_base, server.secret)
-        tasks.append(api.action("getMeetings", params))
+        tasks.append(fetch_meetings(server))
+
     for next_upstream in asyncio.as_completed(tasks):
         upstream = await next_upstream
         if not upstream.success:
@@ -549,7 +540,9 @@ async def handle_get_meetings(ctx: BBBApiRequest):
             if meeting_xml.findtext("metadata/bbblb-tenant") != tenant.name:
                 continue
             scoped_id = meeting_xml.findtext("meetingID")
-            unscoped_id, scope = utils.extract_scope(scoped_id)
+            if not scoped_id:
+                continue
+            unscoped_id, scope = utils.split_scope(scoped_id)
             if scope != tenant.name:
                 continue
             xml_fix_meeting_id(meeting_xml, scoped_id, unscoped_id)
@@ -568,9 +561,9 @@ async def handle_get_meeting_info(ctx: BBBApiRequest):
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
 
-    bbb = BBBClient(server.api_base, server.secret)
-    params["meetingID"] = scoped_id
-    upstream = await bbb.action("getMeetingInfo", params)
+    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        params["meetingID"] = scoped_id
+        upstream = await bbb.action("getMeetingInfo", params)
 
     if upstream.error == "notFound":
         async with ctx.session as session:
@@ -626,13 +619,13 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             stmt = stmt.where(model.Recording.meta[key].as_text() == value)
     if 0 < offset < 10000:
         stmt = stmt.offset(offset)
-    if 0 < limit < config.MAX_ITEMS:
+    if 0 < limit < ctx.config.MAX_ITEMS:
         stmt = stmt.limit(limit)
     else:
-        stmt = stmt.limit(config.MAX_ITEMS)
+        stmt = stmt.limit(ctx.config.MAX_ITEMS)
 
-    result_xml: ETree = XML.response(XML.returncode("SUCCESS"), XML.recordings())
-    all_recordings = result_xml.find("recordings")
+    result_xml: ETree = XML.response(XML.returncode("SUCCESS"))
+    all_recordings = SubElement(result_xml, "recordings")
 
     for rec in (await ctx.session.execute(stmt)).scalars():
         rec_xml: ETree = XML.recording(
@@ -649,7 +642,6 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             XML.endTime(str(int(rec.ended.timestamp() * 1000))),
             XML.participants(str(rec.participants)),
             XML.metadata(*[XML(key, value) for key, value in rec.meta.items()]),
-            XML.playback(),
         )
 
         # TODO: Undocumented <breakout> section with junk in it, see actual BBB responses
@@ -659,9 +651,9 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             rec_xml, utils.add_scope(rec.external_id, tenant.name), rec.external_id
         )
 
-        playback_xml: ETree = rec_xml.find("playback")
+        playback_xml = SubElement(rec_xml, "playback")
         for playback in rec.formats:
-            format_xml = recordings.format_xml(playback)
+            format_xml = playback_to_xml(ctx.config, playback)
             playback_xml.append(format_xml)
 
         all_recordings.append(rec_xml)
@@ -671,9 +663,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
 
 @api("publishRecordings", methods=["GET"])
 async def handle_publish_recordings(ctx: BBBApiRequest):
-    importer = checked_cast(
-        recordings.RecordingImporter, ctx.request.app.state.importer
-    )
+    importer = await ctx.services.use("importer", RecordingManager)
 
     tenant = await ctx.require_tenant()
     record_ids = (await ctx.require_param("recordID")).split(",")
@@ -693,7 +683,7 @@ async def handle_publish_recordings(ctx: BBBApiRequest):
     recs = (await ctx.session.execute(stmt)).scalars().all()
 
     if not recs:
-        return bbblib.make_error("notFound", "Unknown recording")
+        return make_error("notFound", "Unknown recording")
 
     # Publish or unpublish recordings
     for rec in recs:
@@ -735,9 +725,8 @@ async def handle_delete_recordings(ctx: BBBApiRequest):
 
     # Actually delete records on disk, even if they did not exist in db.
     # Do so in the background, as this may take some time.
-    importer = checked_cast(
-        recordings.RecordingImporter, ctx.request.app.state.importer
-    )
+    importer = await ctx.services.use("importer", RecordingManager)
+
     for record_id in record_ids:
         asyncio.create_task(asyncio.to_thread(importer.delete, tenant.name, record_id))
 
@@ -785,7 +774,7 @@ async def handle_update_recordings(ctx: BBBApiRequest):
 @api("getRecordingTextTracks")
 async def handle_get_Recordings_text_tracks(ctx: BBBApiRequest):
     # Can only be implemented for existing captions. TODO
-    raise bbblib.make_error(
+    raise make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )
 
@@ -803,6 +792,6 @@ async def handle_put_recordings_text_track(ctx: BBBApiRequest):
     # IF we assume that captions do not need to be modified (cut marks) but
     # already match the fully processed recording, then we COULD try to
     # implement the necessary steps here, if ffmpeg is installed and available.
-    raise bbblib.make_error(
+    raise make_error(
         "notImplemented", "This API endpoint or feature is not implemented"
     )

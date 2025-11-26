@@ -1,10 +1,13 @@
 from bbblb import model
-from bbblb.settings import config as cfg
+from bbblb.services import ServiceRegistry
 import secrets
 import sys
 import time
 import click
 import jwt
+
+from bbblb.services.db import DBContext
+from bbblb.settings import BBBLBConfig
 
 from . import main, async_command
 
@@ -24,8 +27,10 @@ from . import main, async_command
 )
 @click.argument("subject")
 @click.argument("scope", nargs=-1)
-@async_command(db=True)
-async def maketoken(subject, expire, server, tenant, scope, verbose):
+@async_command()
+async def maketoken(
+    obj: ServiceRegistry, subject, expire, server, tenant, scope, verbose
+):
     """Generate an Admin Token that can be used to authenticate against the BBBLB API.
 
     The SUBJECT should be a short name or id that identifies the token
@@ -37,10 +42,13 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
     Tenant or Server tokens do not have scopes, their permissions are hard
     coded because tenants or servers can create their own tokens.
     """
+    config = await obj.use("config", BBBLBConfig)
+    db = await obj.use("db", DBContext)
+
     headers = {}
     payload = {
         "sub": subject,
-        "aud": cfg.DOMAIN,
+        "aud": config.DOMAIN,
         "scope": " ".join(sorted(set(scope))) or "admin",
         "jti": secrets.token_hex(8),
     }
@@ -48,27 +56,27 @@ async def maketoken(subject, expire, server, tenant, scope, verbose):
         payload["exp"] = int(time.time() + int(expire))
 
     if server:
-        async with model.session() as session:
+        async with db.session() as session:
             stmt = model.Server.select(domain=server)
             try:
                 server = (await session.execute(stmt)).scalar_one()
             except model.NoResultFound:
-                raise RuntimeError("Server not found in database: {server}")
+                raise RuntimeError(f"Server not found in database: {server}")
         headers["kid"] = f"bbb:{server.domain}"
         del payload["scope"]
         key = server.secret
     elif tenant:
-        async with model.session() as session:
+        async with db.session() as session:
             stmt = model.Tenant.select(name=tenant)
             try:
                 tenant = (await session.execute(stmt)).scalar_one()
             except model.NoResultFound:
-                raise RuntimeError("Tenant not found in database: {tenant}")
+                raise RuntimeError(f"Tenant not found in database: {tenant}")
         headers["kid"] = f"tenant:{tenant.name}"
         del payload["scope"]
         key = tenant.secret
     else:
-        key = cfg.SECRET
+        key = config.SECRET
 
     token = jwt.encode(payload, key, headers=headers)
 

@@ -1,43 +1,25 @@
-import asyncio
+import logging
+
 from functools import cached_property
 import hashlib
 import hmac
 import typing
 import aiohttp
-import jwt
 import lxml.etree
-import lxml.builder
-import logging
+import lxml.builder  # type: ignore
+
 from urllib.parse import parse_qsl, urlencode, urljoin
-from bbblb import model
-from bbblb.settings import config
 
 import yarl
 
+LOG = logging.getLogger(__name__)
 XML = lxml.builder.ElementMaker()
-ETree: typing.TypeAlias = lxml.etree._Element
+ETree: typing.TypeAlias = lxml.etree._Element | lxml.etree._ElementTree
+SubElement = lxml.etree.SubElement
 
 LOG = logging.getLogger(__name__)
 MAX_URL_SIZE = 1024 * 2
 TIMEOUT = aiohttp.ClientTimeout(total=30, connect=10)
-
-CONNPOOL: aiohttp.TCPConnector | None = None
-
-
-async def get_pool():
-    global CONNPOOL
-    if not CONNPOOL or CONNPOOL.closed:
-        CONNPOOL = aiohttp.TCPConnector(limit_per_host=10)
-    return CONNPOOL
-
-
-async def get_client():
-    return aiohttp.ClientSession(connector=await get_pool(), connector_owner=False)
-
-
-async def close_pool():
-    if CONNPOOL and not CONNPOOL.closed:
-        await CONNPOOL.close()
 
 
 class BBBResponse:
@@ -128,16 +110,28 @@ def make_error(key: str, message: str, status_code=200, json=False):
 
 
 class BBBClient:
-    def __init__(self, base_url: str, secret: str):
+    def __init__(
+        self, base_url: str, secret: str, session: aiohttp.ClientSession | None = None
+    ):
+        self.session = session or aiohttp.ClientSession()
         self.base_url = base_url
         self.secret = secret
-        self.session = None
 
     def encode_uri(self, endpoint: str, query: dict[str, str]):
         return urljoin(self.base_url, endpoint) + "?" + self.sign_query(endpoint, query)
 
     def sign_query(self, endpoint: str, query: dict[str, str]):
         return sign_query(endpoint, query, secret=self.secret)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a, **ka):
+        await self.close()
+        return self
+
+    async def close(self):
+        await self.session.close()
 
     async def action(
         self,
@@ -172,8 +166,7 @@ class BBBClient:
         LOG.debug(f"Request: {url}")
         try:
             async with (
-                await get_client() as client,
-                client.request(
+                self.session.request(
                     method, url, data=body, headers=headers, timeout=TIMEOUT
                 ) as response,
             ):
@@ -236,32 +229,3 @@ def verify_checksum_query(
         if hmac.compare_digest(clone.digest(), expected):
             return dict(cleaned), secret
     raise make_error("checksumError", "Checksum did not pass verification")
-
-
-async def trigger_callback(
-    method: str,
-    url: str,
-    params: typing.Mapping[str, str] | None = None,
-    data: bytes | typing.Mapping[str, str] | None = None,
-):
-    async with await get_client() as client:
-        for i in range(config.WEBHOOK_RETRY):
-            try:
-                async with client.request(method, url, params=params, data=data) as rs:
-                    rs.raise_for_status()
-            except aiohttp.ClientError:
-                LOG.warning(
-                    f"Failed to forward callback {url} ({i + 1}/{config.WEBHOOK_RETRY})"
-                )
-                await asyncio.sleep(10 * i)
-                continue
-
-
-async def fire_callback(callback: model.Callback, payload: dict, clear=True):
-    url = callback.forward
-    key = callback.tenant.secret
-    data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
-    await trigger_callback("POST", url, data=data)
-    if clear:
-        async with model.session() as session, session.begin():
-            await session.delete(callback)

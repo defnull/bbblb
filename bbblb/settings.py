@@ -45,6 +45,8 @@ class BaseConfig:
 
     def watch(self, func: typing.Callable[[str, typing.Any, typing.Any], typing.Any]):
         self._watchers.append(func)
+        for name, value, _ in self.itersources():
+            func(name, None, value)
         return func
 
     def itersources(self):
@@ -196,32 +198,39 @@ class BBBLBConfig(BaseConfig):
     #: Poll interval in seconds for the background server health and meeting checker
     POLL_INTERVAL: int = 30
 
-    #: Number of poll errors after which a server is marked OFFLINE and all meetings on it are considered lost.
+    #: Number of failed create calls or health checks after which we give up on an
+    #: UNSTABLE server and mark it as OFFLINE. All remaining meetings are dropped,
+    #: so they can be re-created on another server.
     POLL_FAIL: int = 3
 
-    #: Number of successfull polls in a row before a server is considered ONLINE again.
+    #: Number of successfull health checks in a row after which an OFFLINE or UNSTABLE
+    #: server is considered to be AVAILABLE again.
     POLL_RECOVER: int = 5
 
-    #: Expected base load per meeting.
-    LOADFACTOR_MEETING: float = 15.0
+    #: Base load counted for each meeting.
+    LOAD_BASE: float = 5.0
 
-    #: Expected additional load per user in a meeting
-    LOADFACTOR_SIZE: float = 1.0
+    #: Additional load counted for each user in a meeting.
+    LAOD_USER: float = 1.0
 
-    #: Expected additional load per voice user
-    LOADFACTOR_VOICE: float = 0.5
+    #: Additional load counted for each voice user in a meeting.
+    LOAD_VOICE: float = 0.5
 
-    #: Expected additional load per video user
-    LOADFACTOR_VIDEO: float = 0.5
+    #: Additional load counted for each video user in a meeting.
+    LOAD_VIDEO: float = 0.5
 
-    #: Initial load penalty for new meetings.
-    #: This value is used to predict the future load for new meetings and should
-    #: match the load of a 'typical' meeting on your cluster. The penalty will
-    #: slowly decrease over time until we can assume that the meeting won't
-    #: suddenly grow anymore.
-    #: The idea is to avoid the 'trampling herd' effect where multiple meetings
-    #: are started in a short time and would otherwise end up on the same server.
-    LOADFACTOR_INITIAL: float = 75.0
+    #: Additional load penalty for new meetings.
+    #: New meetings are counted with a higher load until their actual
+    #: load has stabilized to avoid uneven distribution during peak
+    #: hours.
+    #: The load penalty should roughly match the load of a 'typical'
+    #: meeting on your cluster and will decrease over time based on
+    #: meeting age. See LOAD_COOLDOWN.
+    LOAD_PENALTY: float = 20.0
+
+    #: Number of minutes after which new meetings are no longer impacted
+    #: by LOAD_PENALTY. The applied penalty decreases linearly over time.
+    LOAD_COOLDOWN: float = 30
 
     #: Maximum number of meetings or recordings to return from APIs that
     #: potentially return an unlimited amount of data.
@@ -244,6 +253,3 @@ class BBBLBConfig(BaseConfig):
         self.load_env("BBBLB_", strict=strict)
         if verify:
             self.ensure_complete()
-
-
-config = BBBLBConfig()

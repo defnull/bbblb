@@ -4,35 +4,58 @@ from starlette.applications import Starlette
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
+from functools import cached_property
+from typing import cast
+from starlette.requests import Request
 
-from bbblb.web import bbbapi
-from bbblb.web import bbblbapi
-from bbblb import model
-from bbblb import poller
-from bbblb import recordings
-from bbblb import bbblib
-from bbblb.settings import config
+from bbblb.services import ServiceRegistry
+from bbblb.services.bbb import BBBHelper
+from bbblb.services.db import DBContext
+from bbblb.settings import BBBLBConfig
+
+import bbblb.services
 
 
-@asynccontextmanager
-async def lifespan(app: Starlette):
-    await model.init_engine(
-        config.DB, echo=config.DEBUG, create=config.DB_CREATE, migrate=config.DB_MIGRATE
-    )
-    poll_worker = poller.Poller()
-    importer = recordings.RecordingImporter(
-        basedir=config.PATH_DATA / "recordings",
-        concurrency=config.RECORDING_THREADS,
-    )
+class ApiRequestContext:
+    """A wrapper for requests that gives convenient access to importand
+    BBBLB services."""
 
-    try:
-        async with poll_worker, importer:
-            app.state.poll_worker = poll_worker
-            app.state.importer = importer
-            yield
-    finally:
-        await bbblib.close_pool()
-        await model.dispose_engine()
+    def __init__(self, request: Request):
+        self.request = request
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a, **ka):
+        if "session" in self.__dict__:
+            await self.session.close()
+
+    @cached_property
+    def services(self) -> ServiceRegistry:
+        return cast(ServiceRegistry, self.request.app.state.services)
+
+    @cached_property
+    def config(self) -> BBBLBConfig:
+        return cast(BBBLBConfig, self.request.app.state.config)
+
+    @cached_property
+    def bbb(self) -> BBBHelper:
+        return self.services.get("bbb", BBBHelper)
+
+    @cached_property
+    def db(self) -> DBContext:
+        return self.services.get("db", DBContext)
+
+    @cached_property
+    def session(self):
+        """A request specific AsyncSession object.
+
+        The session is closed at the end of the request. It can also be
+        used in an async-with statement to ensure the session is reset at
+        the end of a code secion, or you can call reset() explicitly to
+        end any transactions and free any DB handles mid-request.
+        """
+        return self.db.session()
 
 
 # Playback formats for which we know that they sometimes expect their files
@@ -47,8 +70,12 @@ async def format_redirect_app(format, scope, receive, send):
     await response(scope, receive, send)
 
 
-def make_playback_routes():
+def make_routes(config: BBBLBConfig):
+    from bbblb.web import bbbapi, bbblbapi
+
     return [
+        Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
+        Mount("/bbblb/api", routes=bbblbapi.api_routes),
         # Serve /playback/* files in case the reverse proxy in front if BBBLB does not.
         Mount(
             "/playback",
@@ -69,14 +96,17 @@ def make_playback_routes():
     ]
 
 
-def make_routes():
-    return [
-        Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
-        Mount("/bbblb/api", routes=bbblbapi.api_routes),
-        *make_playback_routes(),
-    ]
+def make_app(config: BBBLBConfig | None = None, autostart=True):
+    if not config:
+        config = BBBLBConfig()
+        config.populate()
 
+    @asynccontextmanager
+    async def lifespan(app: Starlette):
+        services = await bbblb.services.bootstrap(config, autostart=autostart)
+        async with services:
+            app.state.config = config
+            app.state.services = services
+            yield
 
-def make_app():
-    config.populate()
-    return Starlette(debug=True, routes=make_routes(), lifespan=lifespan)
+    return Starlette(debug=config.DEBUG, routes=make_routes(config), lifespan=lifespan)

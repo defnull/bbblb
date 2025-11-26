@@ -1,9 +1,9 @@
 import click
-import bbblb
-from bbblb.settings import config
+from bbblb.services import ServiceRegistry
+from bbblb.services.db import check_migration_state, create_database, migrate_db
+from bbblb.settings import BBBLBConfig
 
 from bbblb.cli import async_command, main
-import bbblb.model
 
 
 @main.group()
@@ -15,23 +15,24 @@ def db():
 @click.option(
     "--create", help="Create database if needed (only postgres).", is_flag=True
 )
-@async_command(db=False)
-async def migrate(create: bool):
+@async_command()
+async def migrate(obj: ServiceRegistry, create: bool):
     """
     Migrate database to the current schema version.
 
     WARNING: Make backups!
     """
+    config = await obj.use("config", BBBLBConfig)
 
     try:
         if create:
-            await bbblb.model.create_database(config.DB)
-        current, target = await bbblb.model.check_migration_state(config.DB)
+            await create_database(config.DB)
+        current, target = await check_migration_state(config.DB)
         if current != target:
             click.echo(
                 f"Migrating database schema from {current or 'empty'!r} to {target!r}..."
             )
-            await bbblb.model.migrate_db(config.DB)
+            await migrate_db(config.DB)
             click.echo("Migration complete!")
         else:
             click.echo("Database is up to date. Nothing to do")

@@ -3,8 +3,11 @@ import time
 
 from sqlalchemy import func
 from bbblb import model, utils
-from bbblb.bbblib import BBBClient
 import click
+
+from bbblb.services import ServiceRegistry
+from bbblb.services.bbb import BBBHelper
+from bbblb.services.db import DBContext
 
 from . import main, async_command
 
@@ -23,10 +26,11 @@ def server():
 )
 @click.option("--secret", help="Set the server secret. Required for new servers")
 @click.argument("domain")
-@async_command(db=True)
-async def create(update: bool, domain: str, secret: str | None):
+@async_command()
+async def create(obj: ServiceRegistry, update: bool, domain: str, secret: str | None):
     """Create a new server or update a server secret."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -46,10 +50,11 @@ async def create(update: bool, domain: str, secret: str | None):
 
 @server.command()
 @click.argument("domain")
-@async_command(db=True)
-async def enable(domain: str):
+@async_command()
+async def enable(obj: ServiceRegistry, domain: str):
     """Enable a server and make it available for new meetings."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -73,10 +78,12 @@ async def enable(domain: str):
     type=int,
     default=0,
 )
-@async_command(db=True)
-async def disable(domain: str, nuke: bool, wait: int):
+@async_command()
+async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
     """Disable a server, so now new meetings are created on it."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+
+    async with db.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
         ).scalar_one_or_none()
@@ -86,7 +93,7 @@ async def disable(domain: str, nuke: bool, wait: int):
         if nuke:
             meetings = await server.awaitable_attrs.meetings
             for meeting in meetings:
-                await _end_meeting(meeting)
+                await _end_meeting(obj, meeting)
         if not server.enabled:
             click.echo(f"Server {domain!r} already disabled")
         else:
@@ -103,7 +110,7 @@ async def disable(domain: str, nuke: bool, wait: int):
         last_count = 0
 
         while True:
-            async with model.session() as session:
+            async with db.session() as session:
                 stmt = (
                     model.Meeting.select(model.Meeting.server == server)
                     .with_only_columns(func.count())
@@ -127,12 +134,14 @@ async def disable(domain: str, nuke: bool, wait: int):
             await asyncio.sleep(interval)
 
 
-async def _end_meeting(meeting: model.Meeting):
+async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
     server = await meeting.awaitable_attrs.server
     tenant = await meeting.awaitable_attrs.server
     scoped_id = utils.add_scope(meeting.external_id, tenant.name)
+    bbb = (await obj.use("bbb", BBBHelper)).connect(
+        meeting.server.api_base, server.secret
+    )
 
-    bbb = BBBClient(meeting.server.api_base, server.secret)
     result = await bbb.action("end", {"meetingID": scoped_id})
     if result.success:
         click.echo(f"Ended meeting {meeting.external_id} ({meeting.tenant.name})")
@@ -143,10 +152,12 @@ async def _end_meeting(meeting: model.Meeting):
 
 
 @server.command()
-@async_command(db=True)
-async def list(with_secrets=False):
+@async_command()
+async def list(obj: ServiceRegistry, with_secrets=False):
     """List all servers with their secrets."""
-    async with model.session() as session:
+    db = await obj.use("db", DBContext)
+
+    async with db.session() as session:
         servers = (await session.execute(model.Server.select())).scalars()
         for server in servers:
             out = f"{server.domain} {server.secret}"
