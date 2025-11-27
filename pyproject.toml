@@ -67,7 +67,8 @@ path = "bbblb/__init__.py"
 include = [
   "bbblb/",
   "/uv.lock",
-  "docs/"
+  "docs/",
+  "tests/"
 ]
 exclude = [
 
