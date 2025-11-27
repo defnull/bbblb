@@ -211,7 +211,7 @@ class BBBLBConfig(BaseConfig):
     LOAD_BASE: float = 5.0
 
     #: Additional load counted for each user in a meeting.
-    LAOD_USER: float = 1.0
+    LOAD_USER: float = 1.0
 
     #: Additional load counted for each voice user in a meeting.
     LOAD_VOICE: float = 0.5

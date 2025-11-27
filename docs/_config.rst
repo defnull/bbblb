@@ -73,7 +73,7 @@ server is considered to be AVAILABLE again.
 
 Base load counted for each meeting.
 
-``LAOD_USER`` (type: ``float``, default: ``1.0``)
+``LOAD_USER`` (type: ``float``, default: ``1.0``)
 
 Additional load counted for each user in a meeting.
 

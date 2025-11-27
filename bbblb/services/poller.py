@@ -25,7 +25,7 @@ class MeetingPoller(BackgroundService):
         self.minsuccess = config.POLL_RECOVER
 
         self.load_base = config.LOAD_BASE
-        self.load_user = config.LAOD_USER
+        self.load_user = config.LOAD_USER
         self.load_video = config.LOAD_VIDEO
         self.load_voice = config.LOAD_VOICE
         self.load_prediction = config.LOAD_PENALTY

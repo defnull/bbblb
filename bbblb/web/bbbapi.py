@@ -386,7 +386,7 @@ async def handle_join(ctx: BBBApiRequest):
     meeting = await ctx.require_meeting()
     server = await meeting.awaitable_attrs.server
 
-    await ctx.session.execute(server.increment_load_stmt(ctx.config.LAOD_USER))
+    await ctx.session.execute(server.increment_load_stmt(ctx.config.LOAD_USER))
     await ctx.session.commit()
     await ctx.session.close()  # Give connection back to pool
 
