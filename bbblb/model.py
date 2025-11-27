@@ -286,7 +286,7 @@ class Server(Base):
 
     #: New meetings are only created on AVAILABLE servers
     health: Mapped[ServerHealth] = mapped_column(
-        IntEnum(ServerHealth), nullable=False, default=ServerHealth.OFFLINE
+        IntEnum(ServerHealth), nullable=False, default=ServerHealth.UNSTABLE
     )
     errors: Mapped[int] = mapped_column(nullable=False, default=0)
     recover: Mapped[int] = mapped_column(nullable=False, default=0)
