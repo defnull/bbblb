@@ -128,7 +128,6 @@ class BBBClient:
 
     async def __aexit__(self, *a, **ka):
         await self.close()
-        return self
 
     async def close(self):
         await self.session.close()
