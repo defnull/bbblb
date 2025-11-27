@@ -87,7 +87,7 @@ class ServiceRegistry:
 
         self.started.remove(name)
         obj = self.services[name]
-        LOG.debug(f"Shutting down {name!r} {obj}")
+        LOG.debug(f"Stopping [{name}]: {obj}")
         if isinstance(obj, ManagedService):
             await obj.on_shutdown()
 
@@ -98,7 +98,7 @@ class ServiceRegistry:
 
         self.started.append(name)
         obj = self.services[name]
-        LOG.debug(f"Initializing {name!r} {obj}")
+        LOG.debug(f"Starting [{name}]: {obj}")
 
         if isinstance(obj, ManagedService):
             # Poor man's dependency injection
@@ -168,6 +168,7 @@ class BackgroundService(ManagedService):
         assert not self.task
         self.shutdown_complete = asyncio.Event()
         self.task = asyncio.create_task(self._run_wrapper())
+        self.task.add_done_callback(lambda task: self.shutdown_complete.set())
 
     async def check_health(self) -> tuple[Health, str]:
         if not self.task:
@@ -186,14 +187,14 @@ class BackgroundService(ManagedService):
 
     async def _run_wrapper(self):
         try:
+            LOG.debug(f"Starting background task: {self}")
             await self.run()
         except asyncio.CancelledError:
-            pass
+            LOG.debug(f"Shutting down background task: {self}")
+            raise
         except BaseException:
-            LOG.exception(f"Background service {self!r} failed!")
+            LOG.exception(f"Failed background task: {self}")
             pass
-        finally:
-            self.shutdown_complete.set()
 
     @abstractmethod
     async def run(self):
