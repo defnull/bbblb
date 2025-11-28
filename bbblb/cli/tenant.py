@@ -1,3 +1,4 @@
+import json
 import re
 from bbblb import model
 from bbblb.services import ServiceRegistry
@@ -77,7 +78,7 @@ async def list_(obj: ServiceRegistry):
     async with db.session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:
-            out = f"{tenant.name} {tenant.realm} {tenant.secret}"
+            out = f"{tenant.name} {tenant.realm} {tenant.secret} {json.dumps(tenant.overrides)}"
             click.echo(out)
 
 
@@ -119,4 +120,4 @@ async def override(obj: ServiceRegistry, clear: bool, name: str, overrides: list
                 click.echo(f"Failed to parse override {override!r}")
                 raise SystemExit(1)
             name, operator, value = m.groups()
-            tenant.add_setting(name, operator, value)
+            tenant.add_override(name, operator, value)  # pyright: ignore[reportArgumentType]

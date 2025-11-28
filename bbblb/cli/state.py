@@ -1,7 +1,6 @@
 import asyncio
 import json
-import pathlib
-import sys
+import typing
 
 from bbblb import model
 import click
@@ -10,49 +9,61 @@ from bbblb.cli.server import _end_meeting
 from bbblb.services import ServiceRegistry
 from bbblb.services.db import DBContext
 
-from . import main, async_command
+from . import MultiChoice, main, async_command
 
 
 @main.group()
 def state():
-    """Save or load cluster state (servers and tenants) from a JSON file"""
+    """Tools to export and import cluster state in JSON files."""
+
+
+type_choices = MultiChoice(["servers", "tenants"])
 
 
 @state.command()
-@click.argument("FILE", default="-")
+@click.option(
+    "--include",
+    "-i",
+    "types",
+    help="Comma separated list of resource types to include in the export.",
+    type=type_choices,
+    default=",".join(type_choices.choices),
+)
+@click.argument("FILE", type=click.Path(dir_okay=False, writable=True), default="-")
 @async_command()
-async def save(obj: ServiceRegistry, file: str):
-    """Export current server and tenant configuration as JSON."""
+async def export(obj: ServiceRegistry, types, file: str):
+    """Export current cluster state as JSON."""
     db = await obj.use("db", DBContext)
 
-    output = {
-        "servers": {},
-        "tenants": {},
-    }
+    export: dict[str, typing.Any] = {}
+
     async with db.session() as session:
-        stmt = model.Server.select().order_by(model.Server.domain)
-        for server in (await session.execute(stmt)).scalars():
-            output["servers"][server.domain] = {
-                "secret": server.secret,
-                "enabled": server.enabled,
-            }
+        if "servers" in types:
+            export["servers"] = {}
+            stmt = model.Server.select().order_by(model.Server.domain)
+            for server in (await session.execute(stmt)).scalars():
+                export["servers"][server.domain] = {
+                    "secret": server.secret,
+                    "enabled": server.enabled,
+                }
 
-        stmt = model.Tenant.select().order_by(model.Tenant.name)
-        for tenant in (await session.execute(stmt)).scalars():
-            output["tenants"][tenant.name] = {
-                "secret": tenant.secret,
-                "realm": tenant.secret,
-                "enabled": tenant.enabled,
-            }
+        if "tenants" in types:
+            export["tenants"] = {}
+            stmt = model.Tenant.select().order_by(model.Tenant.name)
+            for tenant in (await session.execute(stmt)).scalars():
+                export["tenants"][tenant.name] = {
+                    "secret": tenant.secret,
+                    "realm": tenant.realm,
+                    "enabled": tenant.enabled,
+                    "overrides": tenant.overrides,
+                }
 
-    payload = json.dumps(output, indent=2)
-    if file == "-":
-        click.echo(payload)
-    else:
-        await asyncio.to_thread(pathlib.Path(file).write_text, payload)
+    with click.open_file(file, "w") as fp:
+        await asyncio.to_thread(json.dump, export, fp, indent=2)
+        fp.write("\n")
 
 
-@state.command()
+@state.command("import")
 @click.option(
     "--nuke",
     help="End all meetings related to obsolete servers or tenants",
@@ -67,9 +78,24 @@ async def save(obj: ServiceRegistry, file: str):
 @click.option(
     "--dry-run", "-n", help="Simulate changes without changing anything.", is_flag=True
 )
-@click.argument("FILE", default="-")
+@click.option(
+    "--include",
+    "-i",
+    "types",
+    help="Comma separated list of resource types to include in the export.",
+    type=type_choices,
+    default=",".join(type_choices.choices),
+)
+@click.argument("FILE", type=click.Path(dir_okay=False, writable=True), default="-")
 @async_command()
-async def load(obj: ServiceRegistry, file: str, nuke: bool, dry_run: bool, clean: bool):
+async def import_(
+    obj: ServiceRegistry,
+    types: list[str],
+    file: str,
+    nuke: bool,
+    dry_run: bool,
+    clean: bool,
+):
     """Load and apply server and tenant configuration from JSON.
 
     WARNING: This will modify or remove tenants and servers without asking.
@@ -83,99 +109,131 @@ async def load(obj: ServiceRegistry, file: str, nuke: bool, dry_run: bool, clean
 
     """
     db = await obj.use("db", DBContext)
+    with click.open_file(file, "r") as fp:
+        state = await asyncio.to_thread(json.load, fp)
 
-    if file == "-":
-        state = await asyncio.to_thread(json.load, sys.stdin)
-    else:
-        state = json.loads(await asyncio.to_thread(pathlib.Path(file).read_text))
-
-    changes = False
     if dry_run:
         click.echo("=== DRY RUN ===")
 
-    def logchange(obj, attr, value):
-        nonlocal changes
-        oldval = getattr(obj, attr)
-        if oldval == value:
-            return
-        changes = True
-        setattr(obj, attr, value)
-        click.echo(f"CHANGE {obj}.{attr} {oldval!r} -> {value!r}")
-
     async with db.session() as session, session.begin():
-        # Fetch and lock ALL servers and meetings.
-        cur = await session.execute(model.Server.select().with_for_update())
-        servers = {server.domain: server for server in cur.scalars()}
-        cur = await session.execute(model.Tenant.select().with_for_update())
-        tenants = {tenant.name: tenant for tenant in cur.scalars()}
+        changed = False
+        if "servers" in types and "servers" in state:
+            changed |= await sync_servers(
+                state["servers"], session, obj, clean=clean, nuke=nuke, dry_run=dry_run
+            )
 
-        # Create or modify servers
-        for domain, server_conf in state["servers"].items():
-            if domain not in servers:
-                servers[domain] = model.Server(domain=domain)
-                session.add(servers[domain])
-                changes = True
-                click.echo(f"NEW {servers[domain]}")
-            server = servers[domain]
-            logchange(server, "secret", server_conf["secret"])
-            logchange(server, "enabled", server_conf["enabled"])
-
-        # Disable or remove obsolete servers
-        for obsolete in set(servers) - set(state["servers"]):
-            server = servers[obsolete]
-            meetings = await server.awaitable_attrs.meetings
-            changes = True
-
-            if nuke and meetings:
-                for meeting in meetings:
-                    click.echo(f"END {meeting}")
-                    if not dry_run:
-                        await _end_meeting(obj, meeting)
-
-            if clean and (nuke or not meetings):
-                click.echo(f"REMOVED {server}")
-                await session.delete(server)
-            else:
-                logchange(server, "enabled", False)
-
-        # Create or modify tenants
-        for name, tenant_conf in state["tenants"].items():
-            if name not in tenants:
-                tenants[name] = model.Tenant(name=name)
-                session.add(tenants[name])
-                changes = True
-                click.echo(f"NEW {tenants[name]}")
-
-            tenant = tenants[name]
-            logchange(tenant, "secret", tenant_conf["secret"])
-            logchange(tenant, "realm", tenant_conf["realm"])
-            logchange(tenant, "enabled", tenant_conf["enabled"])
-
-        # Disable or remove obsolete tenants
-        for obsolete in set(tenants) - set(state["tenants"]):
-            tenant = tenants[obsolete]
-            meetings = await tenant.awaitable_attrs.meetings
-            changes = True
-
-            if nuke and meetings:
-                for meeting in meetings:
-                    click.echo(f"END {meeting}")
-                    if not dry_run:
-                        await _end_meeting(meeting)
-
-            if clean and (nuke or not meetings):
-                click.echo(f"REMOVED {tenant}")
-                await session.delete(tenant)
-            else:
-                logchange(tenant, "enabled", False)
+        if "tenants" in types and "tenants" in state:
+            changed |= await sync_tenants(
+                state["tenants"], session, obj, clean=clean, nuke=nuke, dry_run=dry_run
+            )
 
         # Finalize changes, if any
-        if not changes:
-            click.echo("OK: Nothing to do")
-            await session.rollback()
-        elif dry_run:
-            click.echo("=== DRY RUN ===")
-            await session.rollback()
+        if changed:
+            await (session.rollback if dry_run else session.commit)()
+            click.echo("Changes applied successfully")
         else:
-            await session.commit()
-            click.echo("OK: Changes applied successfully")
+            click.echo("Nothing to do")
+            await session.rollback()
+
+        if dry_run:
+            click.echo("=== DRY RUN ===")
+
+
+def logchange(obj, attr, value):
+    oldval = getattr(obj, attr)
+    if oldval == value:
+        return False
+    setattr(obj, attr, value)
+    click.echo(f"{obj} changed: {attr} from {oldval!r} to {value!r}")
+    return True
+
+
+async def sync_servers(
+    target,
+    session: model.AsyncSession,
+    sr: ServiceRegistry,
+    clean: bool,
+    nuke: bool,
+    dry_run: bool,
+):
+    cur = await session.execute(model.Server.select().with_for_update())
+    servers = {server.domain: server for server in cur.scalars()}
+    changed = False
+
+    # Create or modify servers
+    for domain, server_conf in target.items():
+        if domain not in servers:
+            servers[domain] = model.Server(domain=domain, enabled=True)
+            session.add(servers[domain])
+            changed = True
+            click.echo(f"{servers[domain]} created")
+        server = servers[domain]
+        changed |= logchange(server, "secret", server_conf["secret"])
+        changed |= logchange(server, "enabled", server_conf["enabled"])
+
+    # Disable or remove obsolete servers
+    for obsolete in set(servers) - set(target):
+        server = servers[obsolete]
+        meetings = await server.awaitable_attrs.meetings
+        changed = True
+
+        if nuke and meetings:
+            for meeting in meetings:
+                if not dry_run:
+                    await _end_meeting(sr, meeting)
+                click.echo(f"{meeting} nuked")
+
+        if clean and (nuke or not meetings):
+            click.echo(f"{server} removed")
+            await session.delete(server)
+        else:
+            changed |= logchange(server, "enabled", False)
+
+    return changed
+
+
+async def sync_tenants(
+    target,
+    session: model.AsyncSession,
+    sr: ServiceRegistry,
+    clean: bool,
+    nuke: bool,
+    dry_run: bool,
+):
+    cur = await session.execute(model.Tenant.select().with_for_update())
+    tenants = {tenant.name: tenant for tenant in cur.scalars()}
+    changed = False
+
+    # Create or modify tenants
+    for name, tenant_conf in target.items():
+        if name not in tenants:
+            tenants[name] = model.Tenant(name=name)
+            session.add(tenants[name])
+            changed = True
+            click.echo(f"{tenants[name]} created")
+
+        tenant = tenants[name]
+        changed |= logchange(tenant, "secret", tenant_conf["secret"])
+        changed |= logchange(tenant, "realm", tenant_conf["realm"])
+        changed |= logchange(tenant, "enabled", tenant_conf["enabled"])
+        changed |= logchange(tenant, "overrides", tenant_conf["overrides"])
+
+    # Disable or remove obsolete tenants
+    for obsolete in set(tenants) - set(target):
+        tenant = tenants[obsolete]
+        meetings = await tenant.awaitable_attrs.meetings
+        changed = True
+
+        if nuke and meetings:
+            for meeting in meetings:
+                if not dry_run:
+                    await _end_meeting(sr, meeting)
+                click.echo(f"{meeting} nuked")
+
+        if clean and (nuke or not meetings):
+            click.echo(f"{tenant} removed")
+            await session.delete(tenant)
+        else:
+            changed |= logchange(tenant, "enabled", False)
+
+    return changed

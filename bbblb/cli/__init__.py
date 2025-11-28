@@ -22,6 +22,33 @@ def async_command():
     return decorator
 
 
+class MultiChoice(click.ParamType):
+    name = "list"
+
+    def __init__(self, choices):
+        self.choices = tuple(choices)
+
+    def convert(self, value, param, ctx):
+        if not value:
+            return []
+        if isinstance(value, (list, tuple)):
+            return tuple(value)
+        values = [v.strip() for v in value.split(",")]
+        for v in values:
+            if v not in self.choices:
+                self.fail(
+                    f"Invalid choice: '{v}'. Must be one of: {', '.join(self.choices)}",
+                    param,
+                    ctx,
+                )
+        return values
+
+    def to_info_dict(self):
+        info_dict = super().to_info_dict()
+        info_dict["choices"] = self.choices
+        return info_dict
+
+
 @click.group(name="bbblb", context_settings={"show_default": True})
 @click.option(
     "--config-file",
