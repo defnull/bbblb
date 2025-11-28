@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 import datetime
 import random
 import time
@@ -15,6 +16,16 @@ import logging
 from bbblb.settings import BBBLBConfig
 
 LOG = logging.getLogger(__name__)
+
+
+@dataclass
+class ServerStats:
+    meetings = 0
+    users = 0
+    video = 0
+    voice = 0
+    largest = 0
+    load = 0.0
 
 
 class MeetingPoller(BackgroundService):
@@ -109,8 +120,7 @@ class MeetingPoller(BackgroundService):
 
         LOG.info(f"Polling {server.api_base} (state={server.health.name})")
         running_ids = set()
-        users = 0
-        load = 0.0
+        stats = ServerStats()
         success = True
         try:
             async with self.bbb.connect(server.api_base, server.secret) as client:
@@ -126,17 +136,25 @@ class MeetingPoller(BackgroundService):
                 parent_id = mxml.findtext("breakout/parentMeetingID")
                 running_ids.add(meeting_id)
 
-                load += self.load_base
-                users += int(mxml.findtext("participantCount") or 0)
-                load += int(mxml.findtext("participantCount") or 0) * self.load_user
-                load += (
-                    int(mxml.findtext("voiceParticipantCount") or 0) * self.load_voice
-                )
-                load += int(mxml.findtext("videoCount") or 0) * self.load_video
-
+                users = int(mxml.findtext("participantCount") or 0)
+                voice = int(mxml.findtext("voiceParticipantCount") or 0)
+                video = int(mxml.findtext("videoCount") or 0)
                 age = max(0.0, time.time() - int(mxml.findtext("createTime") or 0))
+
+                stats.meetings += 1
+                stats.users += users
+                stats.voice += voice
+                stats.video += video
+                stats.largest = max(stats.largest, users)
+
+                stats.load += self.load_base
+                stats.load += users * self.load_user
+                stats.load += voice * self.load_voice
+                stats.load += video * self.load_video
                 if age < self.load_cooldown:
-                    load += self.load_prediction * (1.0 - (age / self.load_cooldown))
+                    stats.load += self.load_prediction * (
+                        1.0 - (age / self.load_cooldown)
+                    )
 
                 if meeting_id not in meetings:
                     if parent_id:
@@ -175,13 +193,13 @@ class MeetingPoller(BackgroundService):
             old_health = server.health
 
             if success:
-                server.load = load
+                server.load = stats.load
                 server.mark_success(self.minsuccess)
             else:
                 server.mark_error(self.maxerror)
 
             LOG.info(
-                f"[{server.domain}] meetings={len(running_ids)} users={users} load={load:.1f} health={server.health.name}"
+                f"[{server.domain}] meetings={stats.meetings} users={stats.users} load={stats.load:.1f} health={server.health.name}"
             )
 
             # Log all state changes (including recovery) as warnings
