@@ -70,7 +70,7 @@ async def export(obj: ServiceRegistry, types, file: str):
     is_flag=True,
 )
 @click.option(
-    "--clean",
+    "--delete",
     help="Remove obsolete server and tenants instead of just disabling them."
     "Combine with --nuke to force removal.",
     is_flag=True,
@@ -94,7 +94,7 @@ async def import_(
     file: str,
     nuke: bool,
     dry_run: bool,
-    clean: bool,
+    delete: bool,
 ):
     """Load and apply server and tenant configuration from JSON.
 
@@ -119,12 +119,22 @@ async def import_(
         changed = False
         if "servers" in types and "servers" in state:
             changed |= await sync_servers(
-                state["servers"], session, obj, clean=clean, nuke=nuke, dry_run=dry_run
+                state["servers"],
+                session,
+                obj,
+                delete=delete,
+                nuke=nuke,
+                dry_run=dry_run,
             )
 
         if "tenants" in types and "tenants" in state:
             changed |= await sync_tenants(
-                state["tenants"], session, obj, clean=clean, nuke=nuke, dry_run=dry_run
+                state["tenants"],
+                session,
+                obj,
+                delete=delete,
+                nuke=nuke,
+                dry_run=dry_run,
             )
 
         # Finalize changes, if any
@@ -152,7 +162,7 @@ async def sync_servers(
     target,
     session: model.AsyncSession,
     sr: ServiceRegistry,
-    clean: bool,
+    delete: bool,
     nuke: bool,
     dry_run: bool,
 ):
@@ -182,8 +192,9 @@ async def sync_servers(
                 if not dry_run:
                     await _end_meeting(sr, meeting)
                 click.echo(f"{meeting} nuked")
+            meetings = []
 
-        if clean and (nuke or not meetings):
+        if delete and not meetings:
             click.echo(f"{server} removed")
             await session.delete(server)
         else:
@@ -196,7 +207,7 @@ async def sync_tenants(
     target,
     session: model.AsyncSession,
     sr: ServiceRegistry,
-    clean: bool,
+    delete: bool,
     nuke: bool,
     dry_run: bool,
 ):
@@ -229,8 +240,9 @@ async def sync_tenants(
                 if not dry_run:
                     await _end_meeting(sr, meeting)
                 click.echo(f"{meeting} nuked")
+            meetings = []
 
-        if clean and (nuke or not meetings):
+        if delete and not meetings:
             click.echo(f"{tenant} removed")
             await session.delete(tenant)
         else:
