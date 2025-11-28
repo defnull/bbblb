@@ -52,9 +52,9 @@ Features
 -  **Callback Relay**: Callbacks registered for a meeting are properly
    relayed between the back-end BBB server and the front-end application
    with a robust retry-mechanism.
--  **Management API**: BBBLB offers its own API and command line tool to
-   fetch health information, manage tenants, servers or recordings, or
-   perform maintenance tasks.
+-  **Admin API and CLI**: BBBLB offers both an API and a command line
+   interface to fetch health information, manage tenants, servers or
+   recordings and perform maintenance tasks.
 -  **Easy to deploy**: At least easi\ *er* than most other BigBlueButton
    Load Balancer implementations.
 

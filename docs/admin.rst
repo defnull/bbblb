@@ -33,7 +33,7 @@ Override create parameters
 
 The BBB API for creating new meetings accepts a ton of parameters and allows front-ends to control the featureset and many other aspects of a meeting. You can enforce or extend those parameters for each tenant using overrides::
 
-    Usage: bbblb override set [OPTIONS] TENANT NAME=VALUE
+    Usage: bbblb tenant override [OPTIONS] TENANT NAME=VALUE
 
 You can define any number of create parameter overrides per tenant as ``PARAM=VALUE`` pairs. ``PARAM`` should match a BBB create call API parameter and the given ``VALUE`` will be enforced on all future create-calls issued by this tenant. If ``VALUE`` is empty, then the parameter will be removed from create-calls.
 
@@ -43,13 +43,13 @@ Examples::
 
     # Limit the 'free' tenant to 100 participants and 90 minutes
     # per meeting, and prevent recordings
-    bbblb override set free "duration<90" "maxParticipants<100" "record="
+    bbblb tenant override free "duration<90" "maxParticipants<100" "record="
 
     # Set a different default presentation for the 'moodle' tenant
-    bbblb override set moodle "preUploadedPresentation?https://dl.example.com/school1.pdf"
+    bbblb tenant override moodle "preUploadedPresentation?https://dl.example.com/school1.pdf"
 
     # Disable chat for the 'interview' tenant
-    bbblb override set interview "disabledFeatures+chat" "disabledFeaturesExclude="
+    bbblb tenant override interview "disabledFeatures+chat" "disabledFeaturesExclude="
 
 Manage Servers
 ==============
