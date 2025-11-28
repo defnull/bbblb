@@ -178,8 +178,8 @@ async def sync_servers(
             changed = True
             click.echo(f"{servers[domain]} created")
         server = servers[domain]
-        changed |= logchange(server, "secret", server_conf["secret"])
         changed |= logchange(server, "enabled", server_conf["enabled"])
+        changed |= logchange(server, "secret", server_conf["secret"])
 
     # Disable or remove obsolete servers
     for obsolete in set(servers) - set(target):
@@ -224,9 +224,9 @@ async def sync_tenants(
             click.echo(f"{tenants[name]} created")
 
         tenant = tenants[name]
+        changed |= logchange(tenant, "enabled", tenant_conf["enabled"])
         changed |= logchange(tenant, "secret", tenant_conf["secret"])
         changed |= logchange(tenant, "realm", tenant_conf["realm"])
-        changed |= logchange(tenant, "enabled", tenant_conf["enabled"])
         changed |= logchange(tenant, "overrides", tenant_conf["overrides"])
 
     # Disable or remove obsolete tenants
