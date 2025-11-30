@@ -49,7 +49,10 @@ class MultiChoice(click.ParamType):
         return info_dict
 
 
-@click.group(name="bbblb", context_settings={"show_default": True})
+@click.group(
+    name="bbblb",
+    context_settings=dict(show_default=True, help_option_names=["--help", "-h"]),
+)
 @click.option(
     "--config-file",
     "-C",

@@ -45,7 +45,6 @@ docs = [
     "m2r2>=0.3.4",
     "sphinx>=8.2.3",
     "sphinx-autobuild>=2025.8.25",
-    "sphinx-click>=6.1.0",
     "watchdog>=6.0.0",
 ]
 

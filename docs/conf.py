@@ -18,8 +18,6 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.extlinks",
     "sphinx.ext.intersphinx",
-    'sphinx_click',
-    'm2r2',
 ]
 
 templates_path = ["_templates"]
@@ -39,6 +37,7 @@ html_theme_options = {
     'github_button': False,
 }
 
+smartquotes = False
 
 default_role = "code"
 
