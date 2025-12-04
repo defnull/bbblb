@@ -132,9 +132,12 @@ class AuthContext:
             header = jwt.get_unverified_header(credentials)
             kid = header.get("kid")  # type: str|None
             if kid and kid.startswith("bbb:"):
+                # TODO: Disabled servers can still upload recordings. Correct?
                 server = await model.Server.find(ctx.session, domain=kid[4:])
                 if not server:
-                    raise ApiError(401, "Access denied", "Unknown key identifier")
+                    raise ApiError(
+                        401, "Access denied", "Unknown server in key identifier"
+                    )
                 payload = jwt.decode(
                     credentials,
                     server.secret,
@@ -145,9 +148,15 @@ class AuthContext:
                 payload["sub"] = server.domain
                 return AuthContext(payload, server=server)
             elif kid and kid.startswith("tenant:"):
-                tenant = await model.Tenant.find(ctx.session, name=kid[7:])
+                tenant = await model.Tenant.find(
+                    ctx.session, name=kid[7:], enabled=True
+                )
                 if not tenant:
-                    raise ApiError(401, "Access denied", "Unknown key identifier")
+                    raise ApiError(
+                        401,
+                        "Access denied",
+                        "Unknown or disabled tenant in key identifier",
+                    )
                 payload = jwt.decode(
                     credentials,
                     tenant.secret,
@@ -158,7 +167,7 @@ class AuthContext:
                 payload["sub"] = tenant.name
                 return AuthContext(payload, tenant=tenant)
             elif kid:
-                raise ApiError(401, "Access denied", "Unknown key identifier")
+                raise ApiError(401, "Access denied", "Unknown key identifier type")
             else:
                 payload = jwt.decode(
                     credentials,

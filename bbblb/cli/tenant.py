@@ -58,6 +58,7 @@ async def create(
 @click.argument("name")
 @async_command()
 async def enable(obj: ServiceRegistry, name: str):
+    """Enable a tenant"""
     db = await obj.use("db", DBContext)
     async with db.session() as session:
         tenant = (
@@ -79,6 +80,7 @@ async def enable(obj: ServiceRegistry, name: str):
 @click.option("--nuke", help="End all meetings owned by this tenant.", is_flag=True)
 @async_command()
 async def disable(obj: ServiceRegistry, name: str, nuke: bool):
+    """Disable a tenant"""
     db = await obj.use("db", DBContext)
     async with db.session() as session:
         tenant = (

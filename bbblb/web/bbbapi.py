@@ -92,7 +92,9 @@ class BBBApiRequest(ApiRequestContext):
             return self._tenant
         try:
             realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
-            self._tenant = await model.Tenant.get(self.session, realm=realm)
+            self._tenant = await model.Tenant.get(
+                self.session, realm=realm, enabled=True
+            )
         except model.NoResultFound:
             raise make_error(
                 "checksumError",

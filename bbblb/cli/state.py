@@ -243,7 +243,9 @@ async def sync_tenants(
             meetings = []
 
         if tenant.enabled and delete and not meetings:
-            click.echo(f"INFO: Tenants currently cannot be removed. Disabling {tenant} instead")
+            click.echo(
+                f"INFO: Tenants currently cannot be removed. Disabling {tenant} instead"
+            )
         changed |= logchange(tenant, "enabled", False)
 
     return changed
