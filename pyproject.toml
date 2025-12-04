@@ -42,7 +42,6 @@ dev = [
     "uvicorn>=0.38.0",
 ]
 docs = [
-    "m2r2>=0.3.4",
     "sphinx>=8.2.3",
     "sphinx-autobuild>=2025.8.25",
     "watchdog>=6.0.0",
