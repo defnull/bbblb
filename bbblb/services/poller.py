@@ -199,7 +199,7 @@ class MeetingPoller(BackgroundService):
                 server.mark_error(self.maxerror)
 
             LOG.info(
-                f"[{server.domain}] meetings={stats.meetings} users={stats.users} load={stats.load:.1f} health={server.health.name}"
+                f"[{server.domain}] {server.health.name} enabled={server.enabled} meetings={stats.meetings} users={stats.users} load={stats.load:.1f}"
             )
 
             # Log all state changes (including recovery) as warnings
