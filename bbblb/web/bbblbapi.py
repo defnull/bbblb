@@ -230,7 +230,7 @@ async def handle_callback_end(ctx: BBBLBApiRequest):
         stmt = model.Meeting.select(uuid=meeting_uuid)
         meeting = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if meeting:
-            LOG.info("Meeting ended (callback): {meeting}")
+            LOG.info(f"Meeting ended (callback): {meeting}")
             await bbbapi.forget_meeting(ctx.session, meeting)
 
     return Response("OK", 200)

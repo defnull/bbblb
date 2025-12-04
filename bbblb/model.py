@@ -213,12 +213,12 @@ class Tenant(Base):
     @validates("overrides")
     def validate_overrides(self, key, params):
         if not isinstance(params, (dict)):
-            raise TypeError("Tenant.{key} must be a dict")
+            raise TypeError(f"Tenant.{key} must be a dict")
         for key, value in params.items():
             if not key:
-                raise TypeError("Tenant.{key} keys must be non-empty strings")
+                raise TypeError(f"Tenant.{key} keys must be non-empty strings")
             if not value or not isinstance(value, str):
-                raise TypeError("Tenant.{key} values must be non-empty strings")
+                raise TypeError(f"Tenant.{key} values must be non-empty strings")
             if value[0] not in "=?<+":
                 raise TypeError(
                     "Tenant.{key} values must start with a valid action flag"

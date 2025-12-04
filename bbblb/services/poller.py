@@ -116,7 +116,7 @@ class MeetingPoller(BackgroundService):
         if not server.enabled:
             if not meetings:
                 return
-            LOG.debug("Disabled server {server.domain} still has meetings.")
+            LOG.debug(f"Disabled server {server.domain} still has meetings.")
 
         LOG.info(f"Polling {server.api_base} (state={server.health.name})")
         running_ids = set()
