@@ -1,6 +1,7 @@
 import json
 import re
 from bbblb import model
+from bbblb.cli.server import _end_meeting
 from bbblb.services import ServiceRegistry
 from bbblb.services.db import DBContext
 import secrets
@@ -56,7 +57,7 @@ async def create(
 @tenant.command()
 @click.argument("name")
 @async_command()
-async def remove(obj: ServiceRegistry, name: str):
+async def enable(obj: ServiceRegistry, name: str):
     db = await obj.use("db", DBContext)
     async with db.session() as session:
         tenant = (
@@ -65,9 +66,38 @@ async def remove(obj: ServiceRegistry, name: str):
         if not tenant:
             click.echo(f"Tenant {name!r} not found")
             return
-        await session.delete(tenant)
+        if tenant.enabled:
+            click.echo(f"Tenant {tenant!r} already enabled")
+            return
+        tenant.enabled = True
         await session.commit()
-        click.echo(f"Tenant {name!r} removed")
+        click.echo(f"Tenant {tenant!r} disabled")
+
+
+@tenant.command()
+@click.argument("name")
+@click.option("--nuke", help="End all meetings owned by this tenant.", is_flag=True)
+@async_command()
+async def disable(obj: ServiceRegistry, name: str, nuke: bool):
+    db = await obj.use("db", DBContext)
+    async with db.session() as session:
+        tenant = (
+            await session.execute(model.Tenant.select(name=name))
+        ).scalar_one_or_none()
+        if not tenant:
+            click.echo(f"Tenant {name!r} not found")
+            return
+        if not tenant.enabled:
+            click.echo(f"Tenant {tenant!r} already disabled")
+            return
+        tenant.enabled = False
+        await session.commit()
+        if nuke:
+            meetings = await tenant.awaitable_attrs.meetings
+            for meeting in meetings:
+                await _end_meeting(obj, meeting)
+
+        click.echo(f"Tenant {tenant!r} disabled")
 
 
 @tenant.command("list")

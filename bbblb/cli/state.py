@@ -242,10 +242,8 @@ async def sync_tenants(
                 click.echo(f"{meeting} nuked")
             meetings = []
 
-        if delete and not meetings:
-            click.echo(f"{tenant} removed")
-            await session.delete(tenant)
-        else:
-            changed |= logchange(tenant, "enabled", False)
+        if tenant.enabled and delete and not meetings:
+            click.echo(f"INFO: Tenants currently cannot be removed. Disabling {tenant} instead")
+        changed |= logchange(tenant, "enabled", False)
 
     return changed

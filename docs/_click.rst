@@ -246,7 +246,8 @@ Manage tenants
   Command   Help                                           
   ========  ===============================================
   create                                                   
-  remove                                                   
+  enable    Enable a tenant                                
+  disable   Disable a tenant                               
   list      List all tenants with their realms and secrets.
   override  Manage meeting overrides                       
   ========  ===============================================
@@ -268,10 +269,12 @@ tenant create
   NAME           Required argument                                                              
   =============  ===============================================================================
 
-tenant remove
+tenant enable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``Usage: bbblb tenant remove [OPTIONS] NAME``
+``Usage: bbblb tenant enable [OPTIONS] NAME``
+
+Enable a tenant
 
 .. table:: Options
   :width: 100%
@@ -281,6 +284,23 @@ tenant remove
   ======  =================
   NAME    Required argument
   ======  =================
+
+tenant disable
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb tenant disable [OPTIONS] NAME``
+
+Disable a tenant
+
+.. table:: Options
+  :width: 100%
+
+  ======  ======================================
+  Option  Help                                  
+  ======  ======================================
+  NAME    Required argument                     
+  --nuke  End all meetings owned by this tenant.
+  ======  ======================================
 
 tenant list
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
