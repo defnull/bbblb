@@ -54,7 +54,7 @@ def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> ETre
     if (value := orig.findtext("processing_time")) is not None:
         SubElement(result, "processingTime").text = value
     if (value := orig.findtext("duration")) is not None:
-        SubElement(result, "length").text = str(int(value) // 1000)
+        SubElement(result, "length").text = str(int(value) // 60000)
     if (value := orig.findtext("size")) is not None:
         SubElement(result, "size").text = value
 
