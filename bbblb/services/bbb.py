@@ -52,10 +52,11 @@ class BBBHelper(ManagedService):
                     continue
 
     async def fire_callback(self, callback: model.Callback, payload: dict, clear=True):
-        url = callback.forward
-        key = callback.tenant.secret
-        data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
-        await self.trigger_callback("POST", url, data=data)
+        forward_url = callback.forward
+        if forward_url:
+            key = callback.tenant.secret
+            data = {"signed_parameters": jwt.encode(payload, key, "HS256")}
+            await self.trigger_callback("POST", forward_url, data=data)
         if clear:
             async with self.db.session() as session, session.begin():
                 await session.delete(callback)

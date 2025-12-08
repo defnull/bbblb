@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 import logging
 import jwt
 
+from bbblb.services.analytics import AnalyticsHandler
 from bbblb.web import bbbapi
 from bbblb import model
 
@@ -257,6 +258,7 @@ async def handle_callback_proxy(ctx: BBBLBApiRequest):
     except (UnicodeDecodeError, KeyError, IndexError):
         return Response("Invalid request", 400)
 
+    # Forward callbacks requested by the original client
     stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
     callbacks = (await ctx.session.execute(stmt)).scalars().all()
     if not callbacks:
@@ -269,8 +271,15 @@ async def handle_callback_proxy(ctx: BBBLBApiRequest):
     except BaseException:
         return Response("Access denied, signature check failed", 401)
 
+    # Intercept callbacks we are interested in
+    if ctx.config.ANALYTICS_STORE and callback_type == "analytics":
+        analytics = await ctx.services.use("analytics", AnalyticsHandler)
+        # Fire and forget
+        asyncio.create_task(analytics.store(callbacks[0].tenant, payload))
+
     # Find and trigger callbacks
     for callback in callbacks:
+        # Fire and forget
         asyncio.create_task(ctx.bbb.fire_callback(callback, payload, clear=True))
 
     return Response("OK", 200)

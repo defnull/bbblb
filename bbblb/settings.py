@@ -235,6 +235,12 @@ class BBBLBConfig(BaseConfig):
     #: by LOAD_PENALTY. The applied penalty decreases linearly over time.
     LOAD_COOLDOWN: float = 30
 
+    #: If true, BBBLB will intercept the analytics-callback-url webhook
+    #: and dump json files into the {PATH_DATA}/analytics/{tenant}/
+    #: folder for later analysis (WIP). The callback is only fired if
+    #: BBB is configured with defaultKeepEvents=true in bbb-web.properties.
+    ANALYTICS_STORE: bool = False
+
     #: Maximum number of meetings or recordings to return from APIs that
     #: potentially return an unlimited amount of data.
     MAX_ITEMS: int = 1000

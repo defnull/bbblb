@@ -103,6 +103,13 @@ meeting age. See LOAD_COOLDOWN.
 Number of minutes after which new meetings are no longer impacted
 by LOAD_PENALTY. The applied penalty decreases linearly over time.
 
+``ANALYTICS_STORE`` (type: ``bool``, default: ``False``)
+
+If true, BBBLB will intercept the analytics-callback-url webhook
+and dump json files into the {PATH_DATA}/analytics/{tenant}/
+folder for later analysis (WIP). The callback is only fired if
+BBB is configured with defaultKeepEvents=true in bbb-web.properties.
+
 ``MAX_ITEMS`` (type: ``int``, default: ``1000``)
 
 Maximum number of meetings or recordings to return from APIs that

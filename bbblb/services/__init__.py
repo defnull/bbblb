@@ -215,9 +215,9 @@ def configure_logging(config: BBBLBConfig):
 async def bootstrap(
     config: BBBLBConfig, autostart=True, logging=True
 ) -> ServiceRegistry:
-    import bbblb.settings
     import bbblb.services.poller
     import bbblb.services.recording
+    import bbblb.services.analytics
     import bbblb.services.locks
     import bbblb.services.db
     import bbblb.services.bbb
@@ -254,6 +254,10 @@ async def bootstrap(
     ctx.register(
         "importer",
         bbblb.services.recording.RecordingManager(config),
+    )
+    ctx.register(
+        "analytics",
+        bbblb.services.analytics.AnalyticsHandler(config),
     )
 
     if autostart:

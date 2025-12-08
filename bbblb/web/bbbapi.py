@@ -254,20 +254,27 @@ async def _intercept_callbacks(
     # For all other known callbacks (other than meta_endCallbackUrl) we assume
     # that they follow the JWT model and can be proxied immediately. They still
     # need to be intercepted because we have to re-sign their payload.
-    for meta in ("meta_analytics-callback-url",):
+
+    forward = set(("meta_analytics-callback-url",))
+    intercept = set()
+    if cxt.config.ANALYTICS_STORE:
+        intercept.add("meta_analytics-callback-url")
+
+    for meta in forward:
         orig_url = params.pop(meta, None)
-        if orig_url:
-            typename = meta[5:-14]  # Just the middle part
-            if is_new:
-                callbacks.append(
-                    model.Callback(
-                        uuid=meeting.uuid,
-                        type=typename,
-                        tenant=meeting.tenant,
-                        server=meeting.server,
-                        forward=orig_url,
-                    )
+        typename = meta[5:-14]  # Just the middle part
+        if is_new:
+            callbacks.append(
+                model.Callback(
+                    uuid=meeting.uuid,
+                    type=typename,
+                    tenant=meeting.tenant,
+                    server=meeting.server,
+                    forward=orig_url,  # can be None
                 )
+            )
+
+        if orig_url or meta in intercept:
             url = cxt.request.url_for(
                 "bbblb:callback_proxy",
                 uuid=meeting.uuid,
