@@ -32,6 +32,7 @@ class MeetingPoller(BackgroundService):
     def __init__(self, config: BBBLBConfig):
         self.config = config
         self.interval = config.POLL_INTERVAL
+        self.timeout = self.interval * 1.1
         self.maxerror = config.POLL_FAIL
         self.minsuccess = config.POLL_RECOVER
 
@@ -124,7 +125,7 @@ class MeetingPoller(BackgroundService):
         success = True
         try:
             async with self.bbb.connect(server.api_base, server.secret) as client:
-                result = await client.action("getMeetings")
+                result = await client.action("getMeetings", timeout=self.timeout)
                 result.raise_on_error()
 
             for mxml in result.xml.iterfind("meetings/meeting"):

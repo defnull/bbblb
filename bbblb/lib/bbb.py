@@ -140,6 +140,7 @@ class BBBClient:
         content_type: str | None = None,
         method: str | None = None,
         expect_json=False,
+        timeout: int | float | None = None,
     ) -> BBBResponse:
         method = method or ("POST" if body else "GET")
         url = self.encode_uri(endpoint, query or {})
@@ -162,11 +163,16 @@ class BBBClient:
         # the checksum (╯°□°)╯︵ ┻━┻
         url = yarl.URL(url, encoded=True)
 
+        if timeout and timeout > 0:
+            timeout = aiohttp.ClientTimeout(total=timeout)
+        else:
+            timeout = TIMEOUT
+
         LOG.debug(f"Request: {url}")
         try:
             async with (
                 self.session.request(
-                    method, url, data=body, headers=headers, timeout=TIMEOUT
+                    method, url, data=body, headers=headers, timeout=timeout
                 ) as response,
             ):
                 if response.status not in (200,):

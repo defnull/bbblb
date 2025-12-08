@@ -56,7 +56,10 @@ current tenant.
 
 ``POLL_INTERVAL`` (type: ``int``, default: ``30``)
 
-Poll interval in seconds for the background server health and meeting checker
+Poll interval in seconds for the background server health and meeting checker.
+This also defines the timeout for each individual poll, and changes how quickly
+the POLL_FAIL and POLL_RECOVER watermarks can be reached. The interval should be
+between 10 (fast) and 60 (very slow) depending on the size of your cluster.
 
 ``POLL_FAIL`` (type: ``int``, default: ``3``)
 

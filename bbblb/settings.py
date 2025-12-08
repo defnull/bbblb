@@ -195,7 +195,10 @@ class BBBLBConfig(BaseConfig):
     #: current tenant.
     PLAYBACK_DOMAIN: str = "{DOMAIN}"
 
-    #: Poll interval in seconds for the background server health and meeting checker
+    #: Poll interval in seconds for the background server health and meeting checker.
+    #: This also defines the timeout for each individual poll, and changes how quickly
+    #: the POLL_FAIL and POLL_RECOVER watermarks can be reached. The interval should be
+    #: between 10 (fast) and 60 (very slow) depending on the size of your cluster.
     POLL_INTERVAL: int = 30
 
     #: Number of failed create calls or health checks after which we give up on an
