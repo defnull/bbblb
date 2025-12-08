@@ -235,6 +235,7 @@ async def _intercept_callbacks(
     sig = f"bbblb:callback:end:{meeting.uuid}".encode("ASCII")
     sig = hmac.digest(cxt.config.SECRET.encode("UTF8"), sig, hashlib.sha256).hex()
     url = cxt.request.url_for("bbblb:callback_end", uuid=str(meeting.uuid), sig=sig)
+    url = url.replace(scheme="https", hostname=cxt.config.DOMAIN)
     params["meetingEndedURL"] = str(url)
 
     # Remember and remove all variants of the recording-ready callbacks so we
@@ -288,6 +289,7 @@ async def _intercept_callbacks(
                 uuid=meeting.uuid,
                 type=typename,
             )
+            url = url.replace(scheme="https", hostname=cxt.config.DOMAIN)
             params[param] = str(url)
 
     return callbacks

@@ -20,6 +20,7 @@ services:
       ## match the postgres container below.
       - BBBLB_DB=postgresql://bbblb:bbblb@postgres/bbblb
       - PATH_DATA=/usr/share/bbblb  # This is actually the default
+      - FORWARDED_ALLOW_IPS=*  # Trust X-Forwarded-* headers from caddy.
 
     volumes:
       ## The docker container uses /usr/share/bbblb for persistent data
