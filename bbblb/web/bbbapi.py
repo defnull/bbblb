@@ -2,6 +2,7 @@ import asyncio
 import functools
 import hashlib
 import hmac
+import re
 import typing
 import uuid
 import lxml.etree
@@ -27,6 +28,9 @@ from bbblb.web import ApiRequestContext
 
 LOG = logging.getLogger(__name__)
 R = typing.TypeVar("R")
+
+RECORDING_READY_PATTERN = re.compile("^meta_(.+)-recording-ready-url$")
+CALLBACK_META_PATTERN = re.compile("^meta_(.+)-callback-url$")
 
 api_routes = []
 
@@ -237,7 +241,7 @@ async def _intercept_callbacks(
     # can fire them later, after the recordings were imported and are actually
     # available.
     for meta in list(params):
-        if not (meta.startswith("meta_") and meta.endswith("-recording-ready-url")):
+        if not RECORDING_READY_PATTERN.match(meta):
             continue
         orig_url = params.pop(meta)
         if is_new:
@@ -251,18 +255,22 @@ async def _intercept_callbacks(
                 )
             )
 
-    # For all other known callbacks (other than meta_endCallbackUrl) we assume
-    # that they follow the JWT model and can be proxied immediately. They still
-    # need to be intercepted because we have to re-sign their payload.
+    # For all callbacks that follow the "meta_[name]-callback-url" pattern
+    # we assume that they are JWT encoded and must be intercepted because
+    # we have to re-sign their payload.
 
-    forward = set(("meta_analytics-callback-url",))
-    intercept = set()
+    # Some callbacks should always be intercepted, even if the client did
+    # not request them.
+    always_intercept: set[str] = set()
     if cxt.config.ANALYTICS_STORE:
-        intercept.add("meta_analytics-callback-url")
+        always_intercept.add("meta_analytics-callback-url")
 
-    for meta in forward:
-        orig_url = params.pop(meta, None)
-        typename = meta[5:-14]  # Just the middle part
+    for param in set(params) | always_intercept:
+        match = CALLBACK_META_PATTERN.match(param)
+        if not match:
+            continue
+        orig_url = params.pop(param, None)
+        typename = match.group(1)
         if is_new:
             callbacks.append(
                 model.Callback(
@@ -274,13 +282,13 @@ async def _intercept_callbacks(
                 )
             )
 
-        if orig_url or meta in intercept:
+        if orig_url or param in always_intercept:
             url = cxt.request.url_for(
                 "bbblb:callback_proxy",
                 uuid=meeting.uuid,
                 type=typename,
             )
-            params[meta] = str(url)
+            params[param] = str(url)
 
     return callbacks
 
