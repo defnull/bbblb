@@ -570,10 +570,9 @@ class RecordingImportTask:
             # complete if the front-end is unresponsive.
             for callback in callbacks:
                 asyncio.create_task(
-                    self.importer.bbb.fire_callback(
+                    self.importer.bbb.fire_signed_callback(
                         callback,
                         {"meeting_id": external_id, "record_id": record_id},
-                        clear=False,
                     )
                 )
 

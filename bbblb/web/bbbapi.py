@@ -79,7 +79,7 @@ def to_xml(xml, status_code=200):
 def xml_fix_meeting_id(node: ETree, search: str, replace: str):
     """Do an in-place string search and replace of XML tags that typically
     contain an (external) meeting ID."""
-    for tag in node.iter("meetingID", "meetingId"):
+    for tag in node.iter("meetingID", "meetingId", "meeting_id"):
         if tag.text == search:
             tag.text = replace
     return node

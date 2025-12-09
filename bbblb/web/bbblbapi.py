@@ -2,13 +2,15 @@ import asyncio
 import functools
 import hashlib
 import hmac
+import json
 from urllib.parse import parse_qs
 import logging
 import jwt
 
 from bbblb.services.analytics import AnalyticsHandler
+from bbblb.services.bbb import JWT_ALGORITHMS
 from bbblb.web import bbbapi
-from bbblb import model
+from bbblb import model, utils
 
 from starlette.requests import Request
 from starlette.routing import Route
@@ -218,14 +220,12 @@ async def handle_callback_end(ctx: BBBLBApiRequest):
         stmt = model.Callback.select(uuid=meeting_uuid, type=model.CALLBACK_TYPE_END)
         callback = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if callback:
-            if callback.forward:
-                # Fire and forget callback forward task
-                asyncio.ensure_future(
-                    ctx.bbb.trigger_callback(
-                        "GET", callback.forward, params=ctx.request.query_params
-                    )
+            # Fire and forget callback forward task
+            asyncio.create_task(
+                ctx.bbb.fire_unsigned_callback(
+                    callback, params=ctx.request.query_params
                 )
-            await ctx.session.delete(callback)
+            )
 
         # Mark meeting as ended, if still present
         stmt = model.Meeting.select(uuid=meeting_uuid)
@@ -244,43 +244,94 @@ async def handle_callback_proxy(ctx: BBBLBApiRequest):
         callback_type = ctx.request.path_params["type"]
     except (KeyError, ValueError):
         LOG.warning("Callback called with missing or invalid parameters")
-        return Response("Invalid callback URL", 400)
+        raise ApiError(400, "BadRequest", "Invalid callback URL")
 
-    body = bytearray()
-    async for chunk in ctx.request.stream():
-        body.extend(chunk)
-        if len(body) > ctx.config.MAX_BODY:
-            return Response("Request Entity Too Large", 413)
-
-    try:
-        form = parse_qs(body.decode("UTF-8"))
-        payload = form["signed_parameters"][0]
-    except (UnicodeDecodeError, KeyError, IndexError):
-        return Response("Invalid request", 400)
-
-    # Forward callbacks requested by the original client
+    # Fetch matching callbacks instance
     stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)
     callbacks = (await ctx.session.execute(stmt)).scalars().all()
     if not callbacks:
         # Strange, there should be at least one. Already fired?
-        return Response("OK", 200)
+        raise ApiError(404, "NotFound", "Callback not found")
 
-    try:
-        origin = callbacks[0].server
-        payload = jwt.decode(payload, origin.secret, algorithms=["HS256"])
-    except BaseException:
-        return Response("Access denied, signature check failed", 401)
+    origin = callbacks[0].server
 
-    # Intercept callbacks we are interested in
-    if ctx.config.ANALYTICS_STORE and callback_type == "analytics":
-        analytics = await ctx.services.use("analytics", AnalyticsHandler)
-        # Fire and forget
-        asyncio.create_task(analytics.store(callbacks[0].tenant, payload))
+    async def read_body():
+        body = bytearray()
+        async for chunk in ctx.request.stream():
+            body.extend(chunk)
+            if len(body) > ctx.config.MAX_BODY:
+                raise ApiError(413, "BadRequest", "Request body too large")
+        return body
 
-    # Find and trigger callbacks
-    for callback in callbacks:
-        # Fire and forget
-        asyncio.create_task(ctx.bbb.fire_callback(callback, payload, clear=True))
+    # BBB knows two different types of JWT enhanced callbacks:
+    # analytics: Minimal JWT in Authorization (beare) header, unsigned payload.
+    # everything else: Signed JWT payload in form["signed_parameters"].
+
+    ctype = ctx.request.headers.get("Content-Type", "").lower()
+    auth = ctx.request.headers.get("Authorization")
+    payload: None | dict = None
+
+    if ctype == "application/json":
+        if not auth or not auth.lower().startswith("bearer "):
+            raise ApiError(
+                403, "AccessDenied", "Missing or unsupported Authorization header"
+            )
+
+        try:
+            token = auth.split(" ", 1)[-1].strip()
+            jwt.decode(token, origin.secret, algorithms=JWT_ALGORITHMS)
+        except BaseException:
+            raise ApiError(401, "AccessDenied", "Invalid JWT")
+
+        body = await read_body()
+
+        try:
+            payload = json.loads(body)
+            assert isinstance(payload, dict)
+        except BaseException:
+            raise ApiError(400, "BadRequest", "Invalid JSON")
+
+        # TODO: Fix meeting_id everywhere and also revert all the callbacks in metadata?
+        if "meeting_id" in payload:
+            payload["meeting_id"] = utils.remove_scope(payload["meeting_id"])
+
+        # Intercept callbacks we are interested in
+        if ctx.config.ANALYTICS_STORE and callback_type == "analytics":
+            analytics = await ctx.services.use("analytics", AnalyticsHandler)
+            asyncio.create_task(analytics.store(callbacks[0].tenant, payload))
+
+        # Forward callbacks to front-ends
+        for callback in callbacks:
+            asyncio.create_task(ctx.bbb.fire_analytics_callback(callback, payload))
+
+    elif ctype == "application/x-www-form-urlencoded":
+        body = await read_body()
+
+        try:
+            signed_parameters = parse_qs(body.decode("UTF-8"))["signed_parameters"][0]
+        except BaseException:
+            raise ApiError(400, "BadRequest", "Invalid form data")
+
+        try:
+            payload = jwt.decode(
+                signed_parameters, origin.secret, algorithms=JWT_ALGORITHMS
+            )
+            assert isinstance(payload, dict)
+        except BaseException:
+            raise ApiError(401, "AccessDenied", "Invalid JWT")
+
+        # TODO: Fix meeting_id everywhere and also revert all the callbacks in metadata?
+        if "meeting_id" in payload:
+            payload["meeting_id"] = utils.remove_scope(payload["meeting_id"])
+
+        # Forward callbacks to front-ends
+        for callback in callbacks:
+            asyncio.create_task(ctx.bbb.fire_signed_callback(callback, payload))
+
+    else:
+        raise ApiError(400, "BadRequest", "Unknown callback format")
+
+    assert payload
 
     return Response("OK", 200)
 

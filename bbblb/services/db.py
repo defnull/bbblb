@@ -98,6 +98,7 @@ class DBContext(ManagedService):
 
     @asynccontextmanager
     async def connect(self) -> typing.AsyncIterator[AsyncConnection]:
+        """Create a connection and begin a transaction."""
         if not self.engine:
             raise RuntimeError("Database engine not initialized")
         async with self.engine.begin() as conn:
