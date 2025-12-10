@@ -22,6 +22,7 @@ bbblb
   =========  ===============================================================================
   db         Manage database                                                                
   maketoken  Generate an Admin Token that can be used to authenticate against the BBBLB API.
+  recording  Recording management.                                                          
   server     Manage servers                                                                 
   state      Tools to export and import cluster state in JSON files.                        
   tenant     Manage tenants                                                                 
@@ -90,6 +91,81 @@ coded because tenants or servers can create their own tokens.
   SUBJECT               Required argument                                                     
   SCOPE                 Optional argument                                                     
   ====================  ======================================================================
+
+recording
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording [OPTIONS] COMMAND [ARGS]...``
+
+Recording management.
+
+.. table:: Sub-Commands
+  :width: 100%
+
+  ==============  ======================================================
+  Command         Help                                                  
+  ==============  ======================================================
+  list            List all recordings and their formats                 
+  delete          Delete recordings (all formats)                       
+  import          Import one or more recordings from a tar archive      
+  remove-orphans  Remove recording DB entries that do not exist on disk.
+  ==============  ======================================================
+
+recording list
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording list [OPTIONS]``
+
+List all recordings and their formats
+
+recording delete
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording delete [OPTIONS] [RECORD_ID]...``
+
+Delete recordings (all formats)
+
+.. table:: Options
+  :width: 100%
+
+  =========  =================
+  Option     Help             
+  =========  =================
+  RECORD_ID  Optional argument
+  =========  =================
+
+recording import
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording import [OPTIONS] [FILE]``
+
+Import one or more recordings from a tar archive
+
+.. table:: Options
+  :width: 100%
+
+  =============  ==========================================
+  Option         Help                                      
+  =============  ==========================================
+  --tenant TEXT  Override the tenant found in the recording
+  FILE           Optional argument                         
+  =============  ==========================================
+
+recording remove-orphans
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording remove-orphans [OPTIONS]``
+
+Remove recording DB entries that do not exist on disk.
+
+.. table:: Options
+  :width: 100%
+
+  =============  ===========================================
+  Option         Help                                       
+  =============  ===========================================
+  -n, --dry-run  Simulate changes without changing anything.
+  =============  ===========================================
 
 server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
