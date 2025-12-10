@@ -380,6 +380,7 @@ class RecordingImportTask:
         self._in_pool = self.importer._in_pool
         self._task: asyncio.Task | None = None
         self.error = None
+        self.import_done = asyncio.Event()
 
     def cancel(self):
         if not self.error:
@@ -387,20 +388,26 @@ class RecordingImportTask:
         if self._task:
             self._task.cancel()
 
+    async def wait(self):
+        await self.import_done.wait()
+
     async def run(self):
-        if self._task:
-            raise RuntimeError("Task started twice")
-
-        self._task = asyncio.current_task()
-        if not self._task:
-            raise RuntimeError("Must run in an asyncio task context.")
-
         try:
-            self._breakpoint()
-            await self._run()
-        except BaseException as exc:
-            if not self.error:
-                self.error = exc
+            if self._task:
+                raise RuntimeError("Task started twice")
+
+            self._task = asyncio.current_task()
+            if not self._task:
+                raise RuntimeError("Must run in an asyncio task context.")
+
+            try:
+                self._breakpoint()
+                await self._run()
+            except BaseException as exc:
+                if not self.error:
+                    self.error = exc
+        finally:
+            self.import_done.set()
 
     def __str__(self):
         return f"{self.__class__.__name__}({self.import_id})"
