@@ -6,10 +6,12 @@ import functools
 from functools import cached_property
 import logging
 from pathlib import Path
+import random
 from secrets import token_hex
 import secrets
 import shutil
 import tarfile
+import time
 import typing
 import uuid
 import lxml.etree
@@ -193,7 +195,7 @@ class RecordingManager(BackgroundService):
                     await asyncio.sleep(self.poll_interval)
                     if self.auto_import:
                         await self.schedule_waiting()
-                        await self.cleanup()
+                    await self.cleanup()
                 except asyncio.CancelledError:
                     raise
                 except BaseException:
@@ -204,7 +206,13 @@ class RecordingManager(BackgroundService):
 
     async def schedule_waiting(self):
         """Pick up waiting tasks from inbox"""
+        # Only pick up older files for which we are sure the regular
+        # improt didn't work or was aborted.
+        min_age = random.randint(60,120)
+
         for file in self.inbox_dir.glob("*.tar"):
+            if file.stat().st_mtime + min_age > time.time():
+                continue
             self._schedule(RecordingImportTask(self, file.stem, file))
 
     async def cleanup(self):
