@@ -328,7 +328,7 @@ class RecordingManager(BackgroundService):
                 except FileExistsError:
                     continue
         except FileNotFoundError:
-            return []
+            return
 
     def unpublish(self, tenant: str, record_id: str):
         """Unpublish all formats for a given recording."""

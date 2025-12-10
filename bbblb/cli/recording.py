@@ -1,3 +1,4 @@
+import asyncio
 import click
 import sqlalchemy.orm
 
@@ -11,8 +12,11 @@ from . import main, async_command
 
 
 @main.group()
-def recording():
+@async_command()
+async def recording(obj: ServiceRegistry):
     """Recording management."""
+    # Disable auto-import for use in a cli context
+    obj.get("importer", RecordingManager, uninitialized_ok=True).auto_import = False
 
 
 @recording.command("list")
@@ -47,13 +51,45 @@ async def _delete(obj: ServiceRegistry, record_id):
             click.echo(f"Deleted {record.record_id}")
 
 
+@recording.command()
+@click.argument("record_id", nargs=-1)
+@async_command()
+async def publish(obj: ServiceRegistry, record_id):
+    """Publish recordings"""
+    await _change_publish_flag(obj, record_id, model.RecordingState.PUBLISHED)
+
+
+@recording.command()
+@click.argument("record_id", nargs=-1)
+@async_command()
+async def unpublish(obj: ServiceRegistry, record_id):
+    """Unpublish recordings"""
+    await _change_publish_flag(obj, record_id, model.RecordingState.UNPUBLISHED)
+
+
+async def _change_publish_flag(obj: ServiceRegistry, record_id, state:model.RecordingState):
+    importer = await obj.use("importer", RecordingManager)
+    db = await obj.use("db", DBContext)
+
+    async with db.session() as session:
+        stmt = model.Recording.select(model.Recording.record_id.in_(record_id), model.Recording.state != state).options(sqlalchemy.orm.joinedload(model.Recording.tenant))
+        records = (await session.execute(stmt)).scalars().all()
+        for record in records:
+            record.state = state
+            await session.commit()
+            if state == model.RecordingState.PUBLISHED:
+                await asyncio.to_thread(importer.publish, record.tenant.name, record.record_id)
+            else:
+                await asyncio.to_thread(importer.unpublish, record.tenant.name, record.record_id)
+               
+
+
 @recording.command("import")
 @click.option("--tenant", help="Override the tenant found in the recording")
 @click.argument("FILE", type=click.Path(dir_okay=True), default="-")
 @async_command()
 async def _import(obj: ServiceRegistry, tenant: str, file: str):
     """Import one or more recordings from a tar archive"""
-    obj.get("importer", RecordingManager, uninitialized_ok=True).auto_import = False
     importer = await obj.use("importer", RecordingManager)
 
     async def reader(file):
@@ -66,6 +102,7 @@ async def _import(obj: ServiceRegistry, tenant: str, file: str):
     if task.error:
         click.echo(f"ERROR {task.error}")
         raise SystemExit(1)
+
     click.echo("OK")
 
 
