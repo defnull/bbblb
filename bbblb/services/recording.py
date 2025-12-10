@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import contextvars
 import datetime
 import functools
+from functools import cached_property
 import logging
 from pathlib import Path
 from secrets import token_hex
@@ -85,6 +86,76 @@ def _sanity_pathname(name: str):
         if bad in name:
             raise ValueError(f"Unexpected character in path name: {name!r}")
     return name
+
+
+class FormatXML:
+    def __init__(self, xml: ETree):
+        self.xml = xml
+
+    @cached_property
+    def record_id(self):
+        record_id = self.xml.findtext("id")
+        if not (record_id and utils.RE_RECORD_ID.match(record_id)):
+            raise RecordingImportError(
+                f"Invalid or missing recording ID: {record_id!r}"
+            )
+        return record_id
+
+    @cached_property
+    def format(self):
+        format = self.xml.findtext("playback/format")
+        if not (format and utils.RE_FORMAT_NAME.match(format)):
+            raise RecordingImportError(
+                f"Invalid or missing playback format name: {format!r}"
+            )
+        return format
+
+    @cached_property
+    def bbblb_tenant(self):
+        tenant = self.xml.findtext("meta/bbblb-tenant")
+        if not (tenant and utils.RE_TENANT_NAME.match(tenant)):
+            raise RecordingImportError(
+                f"Invalid or missing tenant information: {tenant!r}"
+            )
+        return tenant
+
+    @cached_property
+    def meta(self):
+        metatags = self.xml.find("meta")
+        if metatags is None:
+            raise RecordingImportError("Invalid or missing meta information")
+        return {tag.tag: tag.text for tag in metatags if tag.text}
+
+    @cached_property
+    def unscoped_id(self):
+        return utils.remove_scope(self.meta["meetingId"])
+
+    @cached_property
+    def started(self):
+        return datetime.datetime.fromtimestamp(
+            int(self.xml.findtext("start_time") or 0) / 1000, tz=datetime.timezone.utc
+        )
+
+    @cached_property
+    def ended(self):
+        return datetime.datetime.fromtimestamp(
+            int(self.xml.findtext("end_time") or 0) / 1000, tz=datetime.timezone.utc
+        )
+
+    @cached_property
+    def participants(self):
+        return int(self.xml.findtext("participants") or 0)
+
+    @cached_property
+    def state(self):
+        return model.RecordingState.UNPUBLISHED
+
+    @cached_property
+    def playback_node(self):
+        playback_node = self.xml.find("playback")
+        if playback_node is None:
+            raise RecordingImportError("Invalid or missing playback information")
+        return playback_node
 
 
 class RecordingManager(BackgroundService):
@@ -394,7 +465,9 @@ class RecordingImportTask:
             # Do not use _in_pool here because it may be closed already
             await asyncio.to_thread(self.task_dir.rename, tmp)
             # Do the actual cleanup in the background and do not wait for the result
-            asyncio.create_task(asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True))
+            asyncio.create_task(
+                asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
+            )
 
     def _breakpoint(self):
         """Raise self.error if it has a value (likely a CancelledError)"""
@@ -432,7 +505,7 @@ class RecordingImportTask:
         total = len(errors) + recordings
         if errors and recordings:
             raise RecordingImportError(
-                f"Some recordings failed to import ({len(errors)} our of {total})"
+                f"Some recordings failed to import ({len(errors)} out of {total})"
             )
         elif errors:
             raise RecordingImportError(f"All recordings failed to import ({total})")
@@ -469,39 +542,22 @@ class RecordingImportTask:
         try:
             xml = await self._in_pool(lxml.etree.parse, metafile)
             assert isinstance(xml, ETree)
+            metadata = FormatXML(xml)
         except BaseException:
             raise RecordingImportError(f"Failed to parse metadata.xml: {metafile}")
 
-        # Extract info info from metadata.xml
-        record_id = xml.findtext("id")
-        if not (record_id and utils.RE_RECORD_ID.match(record_id)):
-            raise RecordingImportError(
-                f"Invalid or missing recording ID: {record_id!r}"
-            )
-        format_name = xml.findtext("playback/format")
-        if not (format_name and utils.RE_FORMAT_NAME.match(format_name)):
-            raise RecordingImportError(
-                f"Invalid or missing playback format name: {format_name!r}"
-            )
-        tenant_name = self.force_tenant or xml.findtext("meta/bbblb-tenant")
-        if not (tenant_name and utils.RE_TENANT_NAME.match(tenant_name)):
-            raise RecordingImportError(
-                f"Invalid or missing tenant information: {tenant_name!r}"
-            )
-        metatags = xml.find("meta")
-        assert metatags is not None  # For typing, we know it's there
-        meta = {tag.tag: tag.text for tag in metatags if tag.text}
-        external_id = meta["meetingId"] = utils.remove_scope(meta["meetingId"])
-        started = datetime.datetime.fromtimestamp(
-            int(xml.findtext("start_time") or 0) / 1000, tz=datetime.timezone.utc
-        )
-        ended = datetime.datetime.fromtimestamp(
-            int(xml.findtext("end_time") or 0) / 1000, tz=datetime.timezone.utc
-        )
-        participants = int(xml.findtext("participants") or 0)
+        # Extract more info info from metadata.xml
+        tenant_name = self.force_tenant or metadata.bbblb_tenant
+        record_id = metadata.record_id
+        format_name = metadata.format
+        started = metadata.started
+        ended = metadata.ended
+        participants = metadata.participants
         state = model.RecordingState.UNPUBLISHED
-        playback_node = xml.find("playback")
-        assert playback_node is not None  # For typing, we know it's there
+        playback_node = metadata.playback_node
+        unscoped_id = metadata.unscoped_id
+        meta_dict = dict(metadata.meta)
+        meta_dict["meetingId"] = unscoped_id
 
         # Fetch tenant this record belongs to, or fail
         async with self.importer.db.session() as session:
@@ -526,12 +582,12 @@ class RecordingImportTask:
                 lambda: model.Recording(
                     tenant=tenant,
                     record_id=record_id,
-                    external_id=external_id,
+                    external_id=unscoped_id,
                     state=state,
                     started=started,
                     ended=ended,
                     participants=participants,
-                    meta=meta,
+                    meta=meta_dict,
                 ),
             )
             if not record_created:
@@ -554,27 +610,37 @@ class RecordingImportTask:
             if not format_created:
                 pass  # TODO: Merge existing with new format?
 
+        if format_created:
+            await self._trigger_callbacks(metadata)
+
+    async def _trigger_callbacks(self, metadata: FormatXML):
         # The recording-ready callbacks are triggered for each format,
         # and may be triggered again if a format is imported multiple
         # times. That#s the way BBB behaves and most front-ends expect.
         # We never know when the last import happend, so we keep the
         # callbacks around for a while. (TODO)
-        if "bbblb-uuid" in record.meta:
-            async with self.importer.db.session() as session:
-                stmt = model.Callback.select(
-                    uuid=record.meta["bbblb-uuid"], type=model.CALLBACK_TYPE_REC
-                )
-                callbacks = (await session.execute(stmt)).scalars().all()
+        meeting_uuid = metadata.meta.get("bbblb-uuid")
+        if not meeting_uuid:
+            return
 
-            # Fire callbacks in the background, they may take a while to
-            # complete if the front-end is unresponsive.
-            for callback in callbacks:
-                asyncio.create_task(
-                    self.importer.bbb.fire_signed_callback(
-                        callback,
-                        {"meeting_id": external_id, "record_id": record_id},
-                    )
+        async with self.importer.db.session() as session:
+            stmt = model.Callback.select(
+                uuid=meeting_uuid, type=model.CALLBACK_TYPE_REC
+            )
+            callbacks = (await session.execute(stmt)).scalars().all()
+
+        # Fire callbacks in the background, they may take a while to
+        # complete if the front-end is unresponsive.
+        for callback in callbacks:
+            asyncio.create_task(
+                self.importer.bbb.fire_signed_callback(
+                    callback,
+                    {
+                        "meeting_id": metadata.unscoped_id,
+                        "record_id": metadata.record_id,
+                    },
                 )
+            )
 
     def _log(self, msg, level=logging.INFO, exc_info=None):
         LOG.log(level, f"[{self.import_id}] {msg}", exc_info=exc_info)
