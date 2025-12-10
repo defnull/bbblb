@@ -173,6 +173,7 @@ class RecordingManager(BackgroundService):
         self.tasks: dict[str, "RecordingImportTask"] = {}
 
         self.poll_interval = config.POLL_INTERVAL
+        self.auto_import = True
 
     async def on_start(self, db: DBContext, bbb: BBBHelper):
         self.db = db
@@ -190,8 +191,9 @@ class RecordingManager(BackgroundService):
             while True:
                 try:
                     await asyncio.sleep(self.poll_interval)
-                    await self.schedule_waiting()
-                    await self.cleanup()
+                    if self.auto_import:
+                        await self.schedule_waiting()
+                        await self.cleanup()
                 except asyncio.CancelledError:
                     raise
                 except BaseException:
