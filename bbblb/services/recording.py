@@ -391,10 +391,10 @@ class RecordingImportTask:
                 tmp = self.task_dir.with_suffix(f".{unique}.failed")
             else:
                 tmp = self.task_dir.with_suffix(f".{unique}.done")
-            await self._in_pool(self.task_dir.rename, tmp)
-
+            # Do not use _in_pool here because it may be closed already
+            await asyncio.to_thread(self.task_dir.rename, tmp)
             # Do the actual cleanup in the background and do not wait for the result
-            self._in_pool(shutil.rmtree, tmp, ignore_errors=True)
+            asyncio.create_task(asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True))
 
     def _breakpoint(self):
         """Raise self.error if it has a value (likely a CancelledError)"""
