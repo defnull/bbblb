@@ -178,13 +178,13 @@ Import one or more recordings from a tar archive
 .. table:: Options
   :width: 100%
 
-  =======================  ==========================================
-  Option                   Help                                      
-  =======================  ==========================================
-  --tenant TEXT            Override the tenant found in the recording
-  --publish / --unpublish  Publish or unpublsh recording after import
-  FILE                     Optional argument                         
-  =======================  ==========================================
+  =======================  ===========================================
+  Option                   Help                                       
+  =======================  ===========================================
+  --tenant TEXT            Override the tenant found in the recording 
+  --publish / --unpublish  Publish or unpublish recording after import
+  FILE                     Optional argument                          
+  =======================  ===========================================
 
 recording remove-orphans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
