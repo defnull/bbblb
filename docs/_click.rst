@@ -107,6 +107,8 @@ Recording management.
   ==============  ======================================================
   list            List all recordings and their formats                 
   delete          Delete recordings (all formats)                       
+  publish         Publish recordings                                    
+  unpublish       Unpublish recordings                                  
   import          Import one or more recordings from a tar archive      
   remove-orphans  Remove recording DB entries that do not exist on disk.
   ==============  ======================================================
@@ -134,6 +136,38 @@ Delete recordings (all formats)
   RECORD_ID  Optional argument
   =========  =================
 
+recording publish
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording publish [OPTIONS] [RECORD_ID]...``
+
+Publish recordings
+
+.. table:: Options
+  :width: 100%
+
+  =========  =================
+  Option     Help             
+  =========  =================
+  RECORD_ID  Optional argument
+  =========  =================
+
+recording unpublish
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb recording unpublish [OPTIONS] [RECORD_ID]...``
+
+Unpublish recordings
+
+.. table:: Options
+  :width: 100%
+
+  =========  =================
+  Option     Help             
+  =========  =================
+  RECORD_ID  Optional argument
+  =========  =================
+
 recording import
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -144,12 +178,13 @@ Import one or more recordings from a tar archive
 .. table:: Options
   :width: 100%
 
-  =============  ==========================================
-  Option         Help                                      
-  =============  ==========================================
-  --tenant TEXT  Override the tenant found in the recording
-  FILE           Optional argument                         
-  =============  ==========================================
+  =======================  ==========================================
+  Option                   Help                                      
+  =======================  ==========================================
+  --tenant TEXT            Override the tenant found in the recording
+  --publish / --unpublish  Publish or unpublsh recording after import
+  FILE                     Optional argument                         
+  =======================  ==========================================
 
 recording remove-orphans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -161,11 +196,11 @@ Remove recording DB entries that do not exist on disk.
 .. table:: Options
   :width: 100%
 
-  =============  ===========================================
-  Option         Help                                       
-  =============  ===========================================
-  -n, --dry-run  Simulate changes without changing anything.
-  =============  ===========================================
+  =============  ======================================
+  Option         Help                                  
+  =============  ======================================
+  -n, --dry-run  Do not actually remove any recordings.
+  =============  ======================================
 
 server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

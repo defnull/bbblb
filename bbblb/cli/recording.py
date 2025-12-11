@@ -67,28 +67,40 @@ async def unpublish(obj: ServiceRegistry, record_id):
     await _change_publish_flag(obj, record_id, model.RecordingState.UNPUBLISHED)
 
 
-async def _change_publish_flag(obj: ServiceRegistry, record_id, state:model.RecordingState):
+async def _change_publish_flag(
+    obj: ServiceRegistry, record_id, state: model.RecordingState
+):
     importer = await obj.use("importer", RecordingManager)
     db = await obj.use("db", DBContext)
 
     async with db.session() as session:
-        stmt = model.Recording.select(model.Recording.record_id.in_(record_id), model.Recording.state != state).options(sqlalchemy.orm.joinedload(model.Recording.tenant))
+        stmt = model.Recording.select(
+            model.Recording.record_id.in_(record_id), model.Recording.state != state
+        ).options(sqlalchemy.orm.joinedload(model.Recording.tenant))
         records = (await session.execute(stmt)).scalars().all()
         for record in records:
             record.state = state
             await session.commit()
             if state == model.RecordingState.PUBLISHED:
-                await asyncio.to_thread(importer.publish, record.tenant.name, record.record_id)
+                await asyncio.to_thread(
+                    importer.publish, record.tenant.name, record.record_id
+                )
             else:
-                await asyncio.to_thread(importer.unpublish, record.tenant.name, record.record_id)
-               
+                await asyncio.to_thread(
+                    importer.unpublish, record.tenant.name, record.record_id
+                )
 
 
 @recording.command("import")
 @click.option("--tenant", help="Override the tenant found in the recording")
+@click.option(
+    "--publish/--unpublish",
+    help="Publish or unpublsh recording after import",
+    default=None,
+)
 @click.argument("FILE", type=click.Path(dir_okay=True), default="-")
 @async_command()
-async def _import(obj: ServiceRegistry, tenant: str, file: str):
+async def _import(obj: ServiceRegistry, tenant: str, publish: bool | None, file: str):
     """Import one or more recordings from a tar archive"""
     importer = await obj.use("importer", RecordingManager)
 
@@ -99,16 +111,34 @@ async def _import(obj: ServiceRegistry, tenant: str, file: str):
 
     task = await importer.start_import(reader(file), force_tenant=tenant)
     await task.wait()
-    if task.error:
-        click.echo(f"ERROR {task.error}")
-        raise SystemExit(1)
 
-    click.echo("OK")
+    for format in task.formats:
+        click.echo(
+            f"Imported: {format.recording.tenant.name}/{format.recording.record_id} ({format.format})"
+        )
+        if (
+            publish is True
+            and format.recording.started != model.RecordingState.PUBLISHED
+        ):
+            await _change_publish_flag(
+                obj, [format.recording.record_id], model.RecordingState.PUBLISHED
+            )
+        elif (
+            publish is False
+            and format.recording.started != model.RecordingState.UNPUBLISHED
+        ):
+            await _change_publish_flag(
+                obj, [format.recording.record_id], model.RecordingState.UNPUBLISHED
+            )
+    for error in task.errors:
+        click.echo(f"ERROR: {error}")
+    if task.errors:
+        raise SystemExit(1)
 
 
 @recording.command()
 @click.option(
-    "--dry-run", "-n", help="Simulate changes without changing anything.", is_flag=True
+    "--dry-run", "-n", help="Do not actually remove any recordings.", is_flag=True
 )
 @async_command()
 async def remove_orphans(obj: ServiceRegistry, dry_run: bool):
