@@ -208,7 +208,7 @@ class RecordingManager(BackgroundService):
         """Pick up waiting tasks from inbox"""
         # Only pick up older files for which we are sure the regular
         # improt didn't work or was aborted.
-        min_age = random.randint(60,120)
+        min_age = random.randint(60, 120)
 
         for file in self.inbox_dir.glob("*.tar"):
             if file.stat().st_mtime + min_age > time.time():
@@ -240,6 +240,7 @@ class RecordingManager(BackgroundService):
         self,
         data: typing.AsyncGenerator[bytes, None],
         force_tenant: str | None = None,
+        default_state: model.RecordingState | None = model.RecordingState.UNPUBLISHED,
     ):
         """Copy the data stream into the inbox directory and schedule a
         :cls:`RecordingImportTask`. The returned task may take a while to
@@ -275,7 +276,7 @@ class RecordingManager(BackgroundService):
 
             raise
 
-        task = RecordingImportTask(self, import_id, final, force_tenant)
+        task = RecordingImportTask(self, import_id, final, force_tenant, default_state)
         self._schedule(task)
         return task
 
@@ -305,14 +306,10 @@ class RecordingManager(BackgroundService):
         return self.storage_dir / tenant / record_id / format
 
     def publish(self, tenant: str, record_id: str):
-        """Publish all available formats for a recording.
-
-        Return a list of format names, which may be empty if there were no
-        recordings that could be published."""
+        """Publish all available formats for a recording on disk."""
 
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
-        formats = []
         try:
             for format_dir in (self.storage_dir / tenant / record_id).iterdir():
                 if not format_dir.is_dir():
@@ -320,7 +317,6 @@ class RecordingManager(BackgroundService):
                 if format_dir.name.endswith(".temp"):
                     continue
                 format_name = format_dir.name
-                formats.append(format_name)
                 symlink = self.public_dir / format_name / record_id
                 try:
                     if symlink.exists():
@@ -339,7 +335,7 @@ class RecordingManager(BackgroundService):
             return
 
     def unpublish(self, tenant: str, record_id: str):
-        """Unpublish all formats for a given recording."""
+        """Unpublish all formats for a given recording on disk."""
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
 
@@ -352,6 +348,7 @@ class RecordingManager(BackgroundService):
                 )
 
     def delete(self, tenant: str, record_id: str):
+        """Delete a recording from disk"""
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
 
@@ -371,6 +368,27 @@ class RecordingManager(BackgroundService):
         except FileNotFoundError:
             pass  #  Already deleted
 
+    def move_tenant(self, record_id: str, current_tenant: str, new_tenant: str):
+        current_tenant = _sanity_pathname(current_tenant)
+        new_tenant = _sanity_pathname(new_tenant)
+        record_id = _sanity_pathname(record_id)
+
+        # Move storage dir to new tenant
+        old_path = self.storage_dir / current_tenant / record_id
+        new_path = self.storage_dir / new_tenant / record_id
+        new_path.parent.mkdir(exist_ok=True, parents=True)
+        shutil.move(old_path, new_path)  # This can raise
+
+        # Fix existing symlinks
+        for format_dir in self.public_dir.iterdir():
+            symlink = format_dir / record_id
+            if symlink.is_symlink():
+                symlink.unlink()
+                symlink.symlink_to(
+                    new_path.relative_to(symlink.parent, walk_up=True),
+                    target_is_directory=True,
+                )
+
 
 class RecordingImportTask:
     def __init__(
@@ -379,20 +397,23 @@ class RecordingImportTask:
         import_id: str,
         source: Path,
         force_tenant: str | None = None,
+        default_state: model.RecordingState | None = model.RecordingState.UNPUBLISHED,
     ):
         self.importer = importer
         self.import_id = import_id
         self.source = source
         self.task_dir = self.importer.work_dir / self.import_id
         self.force_tenant = force_tenant
-        self._in_pool = self.importer._in_pool
-        self._task: asyncio.Task | None = None
-        self.error = None
+        self.default_state = default_state
+
+        self.formats: list[model.PlaybackFormat] = []
+        self.errors: list[BaseException] = []
         self.import_done = asyncio.Event()
 
+        self._in_pool = self.importer._in_pool
+        self._task: asyncio.Task | None = None
+
     def cancel(self):
-        if not self.error:
-            self.error = asyncio.CancelledError()
         if self._task:
             self._task.cancel()
 
@@ -408,12 +429,10 @@ class RecordingImportTask:
             if not self._task:
                 raise RuntimeError("Must run in an asyncio task context.")
 
-            try:
-                self._breakpoint()
-                await self._run()
-            except BaseException as exc:
-                if not self.error:
-                    self.error = exc
+            await self._run()
+        except Exception as exc:
+            self.errors.append(exc)
+            raise
         finally:
             self.import_done.set()
 
@@ -432,7 +451,6 @@ class RecordingImportTask:
             self._log(
                 f"Failed to claim work directory: {self.task_dir}", logging.WARNING
             )
-            self.cancel()
             return  # Not an error
 
         try:
@@ -444,71 +462,51 @@ class RecordingImportTask:
             # Process this import
             await self._process()
 
-            # Successfull imports are removed from the inbox
-            await self._in_pool(self.source.unlink)
-
-        except BaseException as exc:
-            if not self.error:
-                self.error = exc
-
-            if isinstance(exc, asyncio.CancelledError):
-                self._log("Task canceled")
-                self.cancel()
-                raise
-
-            if isinstance(exc, RecordingImportError):
-                self._log(str(exc), logging.ERROR, exc_info=exc)
+            # Move failed imports to the "failed" directory for human
+            # inspection and to prevent them beeing picked up again and
+            # again. Successfull imports are just removed.
+            if self.errors:
+                failed = self.importer.failed_dir / self.source.name
+                await self._in_pool(self.source.rename, failed)
             else:
-                self._log(
-                    "Unhandled exception during import", logging.ERROR, exc_info=exc
-                )
+                await self._in_pool(self.source.unlink)
 
-            # Failed imports need human inspection. Move the archive to the
-            # "failed" directory.
-            failed = self.importer.failed_dir / self.source.name
-            self._in_pool(self.source.rename, failed)
+        except asyncio.CancelledError:
+            self._log("Task canceled")
             raise
-
+        except Exception as exc:
+            self.errors.append(exc)
+            self._log("Unhandled exception during import", logging.ERROR, exc_info=exc)
         finally:
-            # Un-claim the task directory as quickly and robust as possible by
-            # renaming it first, and do the cleanup later.
-            unique = token_hex()
-            if isinstance(self.error, asyncio.CancelledError):
-                tmp = self.task_dir.with_suffix(f".{unique}.canceled")
-            elif self.error:
-                tmp = self.task_dir.with_suffix(f".{unique}.failed")
-            else:
-                tmp = self.task_dir.with_suffix(f".{unique}.done")
-            # Do not use _in_pool here because it may be closed already
+            # Un-claim the task directory as quickly and robust as possible.
+            tmp = self.task_dir.with_suffix(f".{token_hex()}.temp")
             await asyncio.to_thread(self.task_dir.rename, tmp)
-            # Do the actual cleanup in the background and do not wait for the result
-            asyncio.create_task(
-                asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
-            )
-
-    def _breakpoint(self):
-        """Raise self.error if it has a value (likely a CancelledError)"""
-        if self.error:
-            raise self.error
+            await asyncio.to_thread(shutil.rmtree, tmp, ignore_errors=True)
 
     async def _process(self):
+        """Process a single import archive."""
+
         def _extract():
-            self._breakpoint()
             self._log(f"Extracting: {self.source}")
             with tarfile.open(self.source) as tar:
                 tar.extractall(self.task_dir, filter=tarfile.data_filter)
             self._log(f"Extracted: {self.source}")
 
-        await self._in_pool(_extract)
+        try:
+            await self._in_pool(_extract)
+        except Exception as exc:
+            self._log(
+                f"Failed to extract import archive: {self.source}",
+                logging.ERROR,
+                exc_info=exc,
+            )
+            self.errors.append(exc)
+            return
 
-        recordings = 0
-        errors = []
         for metafile in self.task_dir.glob("**/metadata.xml"):
             try:
-                self._breakpoint()
                 self._log(f"Found: {metafile}")
                 await self._process_one(metafile)
-                recordings += 1
             except asyncio.CancelledError:
                 raise
             except BaseException as exc:
@@ -517,19 +515,25 @@ class RecordingImportTask:
                     logging.ERROR,
                     exc_info=exc,
                 )
-                errors.append(exc)
+                self.errors.append(exc)
 
-        total = len(errors) + recordings
-        if errors and recordings:
-            raise RecordingImportError(
-                f"Some recordings failed to import ({len(errors)} out of {total})"
+        total = len(self.errors) + len(self.formats)
+        if self.errors and self.formats:
+            self._log(
+                f"Some recordings failed to import ({len(self.errors)} out of {total})",
+                logging.ERROR,
             )
-        elif errors:
-            raise RecordingImportError(f"All recordings failed to import ({total})")
-        elif recordings:
+        elif self.errors:
+            self._log(
+                f"All recordings failed to import ({total})",
+                logging.ERROR,
+            )
+        elif self.formats:
             self._log(f"Finished processing {total} recordings")
         else:
-            raise RecordingImportError(f"No recordings found in: {self.source}")
+            msg = f"No recordings found in: {self.source}"
+            self.errors.append(RecordingImportError(msg))
+            self._log(msg, logging.ERROR)
 
     def _copy_format_atomic(self, source_dir: Path, final_dir: Path):
         temp_dir = final_dir.with_suffix(f".{secrets.token_hex()}.temp")
@@ -545,7 +549,6 @@ class RecordingImportTask:
             temp_dir.mkdir(parents=True)
             shutil.copytree(source_dir, temp_dir, dirs_exist_ok=True)
 
-            self._breakpoint()
             try:
                 if not final_dir.exists():
                     temp_dir.rename(final_dir)
@@ -570,7 +573,6 @@ class RecordingImportTask:
         started = metadata.started
         ended = metadata.ended
         participants = metadata.participants
-        state = model.RecordingState.UNPUBLISHED
         playback_node = metadata.playback_node
         unscoped_id = metadata.unscoped_id
         meta_dict = dict(metadata.meta)
@@ -585,10 +587,8 @@ class RecordingImportTask:
 
         # Copy files while we do not hold a database connection, because
         # this may take a while.
-        self._breakpoint()
         format_dir = self.importer.get_storage_dir(tenant.name, record_id, format_name)
         await self._in_pool(self._copy_format_atomic, metafile.parent, format_dir)
-        self._breakpoint()
 
         # Create or fetch recording entity
         async with self.importer.db.session() as session:
@@ -600,7 +600,7 @@ class RecordingImportTask:
                     tenant=tenant,
                     record_id=record_id,
                     external_id=unscoped_id,
-                    state=state,
+                    state=self.default_state,
                     started=started,
                     ended=ended,
                     participants=participants,
@@ -627,15 +627,19 @@ class RecordingImportTask:
             if not format_created:
                 pass  # TODO: Merge existing with new format?
 
+            await format.awaitable_attrs.recording
+            await format.recording.awaitable_attrs.tenant
+            self.formats.append(format)
+
         if format_created:
             await self._trigger_callbacks(metadata)
 
     async def _trigger_callbacks(self, metadata: FormatXML):
         # The recording-ready callbacks are triggered for each format,
         # and may be triggered again if a format is imported multiple
-        # times. That#s the way BBB behaves and most front-ends expect.
+        # times. That's the way BBB behaves and most front-ends expect.
         # We never know when the last import happend, so we keep the
-        # callbacks around for a while. (TODO)
+        # callbacks around for a while.
         meeting_uuid = metadata.meta.get("bbblb-uuid")
         if not meeting_uuid:
             return
@@ -646,17 +650,12 @@ class RecordingImportTask:
             )
             callbacks = (await session.execute(stmt)).scalars().all()
 
-        # Fire callbacks in the background, they may take a while to
+        # Fire callbacks in the background. They may take a while to
         # complete if the front-end is unresponsive.
+        payload = {"meeting_id": metadata.unscoped_id, "record_id": metadata.record_id}
         for callback in callbacks:
             asyncio.create_task(
-                self.importer.bbb.fire_signed_callback(
-                    callback,
-                    {
-                        "meeting_id": metadata.unscoped_id,
-                        "record_id": metadata.record_id,
-                    },
-                )
+                self.importer.bbb.fire_signed_callback(callback, payload)
             )
 
     def _log(self, msg, level=logging.INFO, exc_info=None):
