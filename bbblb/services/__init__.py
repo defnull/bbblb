@@ -118,6 +118,12 @@ class Health(enum.Enum):
     CRITICAL = 3
 
 
+class HealthReportingMixin:
+    @abstractmethod
+    async def check_health(self) -> tuple[Health, str]:
+        pass
+
+
 class ManagedService(ABC):
     @abstractmethod
     async def on_start(self):
@@ -127,9 +133,6 @@ class ManagedService(ABC):
         dependencies are started before they are passed to this method.
         """
         pass
-
-    async def check_health(self) -> tuple[Health, str]:
-        return Health.UNKNOWN, "Not implemented"
 
     @abstractmethod
     async def on_shutdown(self):
@@ -142,7 +145,7 @@ class ManagedService(ABC):
         pass
 
 
-class BackgroundService(ManagedService):
+class BackgroundService(ManagedService, HealthReportingMixin):
     """Base class for long running background task wrapped in a managed
     service.
 

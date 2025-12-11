@@ -1,6 +1,11 @@
 import asyncio
 import logging
-from bbblb.services import BackgroundService, Health, ManagedService, ServiceRegistry
+from bbblb.services import (
+    BackgroundService,
+    Health,
+    HealthReportingMixin,
+    ServiceRegistry,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -21,17 +26,17 @@ class HealthService(BackgroundService):
 
                 for name in self.sr.started:
                     obj = self.sr.get(name)
-                    if not isinstance(obj, ManagedService):
+                    if not isinstance(obj, HealthReportingMixin):
                         continue
-                    status, msg = await obj.check_health()
+                    try:
+                        status, msg = await obj.check_health()
+                    except Exception as exc:
+                        status = Health.CRITICAL
+                        msg = f"Internal error in health check: {exc}"
                     self.checks[name] = (status, msg)
-                    LOG.debug(f"Check: {name} {status.name} ({msg})")
+                    LOG.debug(f"[{name}] {status.name} {msg}")
             except asyncio.CancelledError:
                 self.checks.clear()
                 raise
             except BaseException:
                 continue
-
-    async def check_health(self) -> tuple[Health, str]:
-        # TODO
-        return await super().check_health()

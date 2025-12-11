@@ -20,12 +20,12 @@ from sqlalchemy.ext.asyncio import (
 
 
 from bbblb import migrations
-from bbblb.services import Health, ManagedService
+from bbblb.services import Health, HealthReportingMixin, ManagedService
 
 LOG = logging.getLogger(__name__)
 
 
-class DBContext(ManagedService):
+class DBContext(ManagedService, HealthReportingMixin):
     engine: AsyncEngine | None = None
     sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
