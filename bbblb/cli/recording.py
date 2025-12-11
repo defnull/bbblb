@@ -74,13 +74,14 @@ async def _change_publish_flag(
     db = await obj.use("db", DBContext)
 
     async with db.session() as session:
-        stmt = model.Recording.select(
-            model.Recording.record_id.in_(record_id), model.Recording.state != state
-        ).options(sqlalchemy.orm.joinedload(model.Recording.tenant))
+        stmt = model.Recording.select(model.Recording.record_id.in_(record_id)).options(
+            sqlalchemy.orm.joinedload(model.Recording.tenant)
+        )
         records = (await session.execute(stmt)).scalars().all()
         for record in records:
-            record.state = state
-            await session.commit()
+            if record.state != state:
+                record.state = state
+                await session.commit()
             if state == model.RecordingState.PUBLISHED:
                 await asyncio.to_thread(
                     importer.publish, record.tenant.name, record.record_id
@@ -95,7 +96,7 @@ async def _change_publish_flag(
 @click.option("--tenant", help="Override the tenant found in the recording")
 @click.option(
     "--publish/--unpublish",
-    help="Publish or unpublsh recording after import",
+    help="Publish or unpublish recording after import",
     default=None,
 )
 @click.argument("FILE", type=click.Path(dir_okay=True), default="-")
