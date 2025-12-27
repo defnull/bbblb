@@ -31,8 +31,8 @@ def tenant():
 async def create(
     obj: ServiceRegistry, update: bool, name: str, realm: str | None, secret: str | None
 ):
-    db = await obj.use("db", DBContext)
-    cfg = await obj.use("config", BBBLBConfig)
+    db = await obj.use(DBContext)
+    cfg = await obj.use(BBBLBConfig)
     async with db.session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
@@ -57,7 +57,7 @@ async def create(
 @async_command()
 async def enable(obj: ServiceRegistry, name: str):
     """Enable a tenant"""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
@@ -79,7 +79,7 @@ async def enable(obj: ServiceRegistry, name: str):
 @async_command()
 async def disable(obj: ServiceRegistry, name: str, nuke: bool):
     """Disable a tenant"""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         tenant = (
             await session.execute(model.Tenant.select(name=name))
@@ -104,7 +104,7 @@ async def disable(obj: ServiceRegistry, name: str, nuke: bool):
 @async_command()
 async def list_(obj: ServiceRegistry):
     """List all tenants with their realms and secrets."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:

@@ -15,30 +15,40 @@ LOG = logging.getLogger(__name__)
 T = typing.TypeVar("T")
 
 
-class ServiceRegistry:
-    """A lazy service registry that provides typed access to arbitrary
-    singletons.
+def _clsname(cls: type | object):
+    if not isinstance(cls, type):
+        cls = cls.__class__
+    return f"{cls.__module__}.{cls.__qualname__}"
 
-    If a singleton implement :cls:`ManagedService`, then it get some
-    basic dependency injection on top and is started and stopped
-    gracefully."""
+
+class ServiceRegistry:
+    """A lazy service registry that provides access to arbitrary
+    service instances, identified by their type.
+
+    If a service instance implements :cls:`ManagedService`, then it get
+    some basic dependency injection on top and is started on demand and
+    gracefully stopped on shutdown."""
 
     def __init__(self):
-        self.services: dict[str, typing.Any] = {}
-        self.started: list[str] = []
-        self._dep: set[tuple[str, str]] = set()
-        self.start_lock = asyncio.Lock()
-        self.register("sr", self)
+        #: A dict mapping registered services classes to their instances
+        self.services: dict[type, typing.Any] = {}
+        #: A list of service instances that were already started.
+        self.started: list[typing.Any] = []
 
-    def register(self, name: str, service: "typing.Any|ManagedService", _replace=False):
+        self._depencency_graph: set[tuple[type, type]] = set()
+        self._start_lock = asyncio.Lock()
+        self.register(self)
+
+    def register(self, service: typing.Any, _replace=False):
         """Register a new service.
 
         It is an error to register the same service name twice.
         The _replace switch is only for testing.
         """
-        if name in self.services and not _replace:
-            raise RuntimeError(f"Services registered twice: {name}")
-        self.services[name] = service
+        klass = service.__class__
+        if klass in self.services and not _replace:
+            raise RuntimeError(f"Services registered twice: {_clsname(klass)}")
+        self.services[klass] = service
 
     async def __aenter__(self):
         return self
@@ -50,65 +60,96 @@ class ServiceRegistry:
     async def shutdown(self):
         """Stop all started services."""
         while self.started:
-            to_stop = self.started[0]
-            await self._stop(to_stop)
+            await self._stop(self.started[0])
 
-    def get(self, name, cast: type[T] = object, uninitialized_ok=False) -> T:
-        """Request a service instance by name, and optionally check its
-        type.
+    def get(self, klass: type[T], uninitialized_ok=False) -> T:
+        """Request a service instance by its class.
 
         Requesting uninitialized services is a :exc:`RuntimeError`
         by default, unless `uninitialized_ok` is true.
         """
-        if name not in self.services:
-            raise AttributeError(f"Unknown service: {name}")
-        obj = self.services[name]
-        if not (cast is object or isinstance(obj, cast)):
-            raise TypeError(f"Expected {cast} but was {type(obj)}")
-        if not (uninitialized_ok or name in self.started):
-            raise RuntimeError(f"Service not initialized yet: {name}")
+        obj = self.services.get(klass)
+        if obj is None:
+            raise AttributeError(f"Unknown service type: {_clsname(klass)}")
+        if not (uninitialized_ok or obj in self.started):
+            raise RuntimeError(f"Service not initialized yet: {_clsname(klass)}")
+        assert isinstance(obj, klass)
         return obj
 
-    async def use(self, name, cast: type[T] = object) -> T:
+    async def use(self, klass: type[T] = object) -> T:
         """Request a service and initialize it, if necessary."""
-        obj = self.get(name, cast, uninitialized_ok=True)
-        if name not in self.started:
-            await self._start(name)
+        obj = self.get(klass, uninitialized_ok=True)
+        if obj not in self.started:
+            await self._start(obj)
         return obj
 
-    async def _stop(self, name):
+    async def _stop(self, obj):
         """Un-initialize a service, if supported and required."""
-        if name not in self.started:
+        assert obj in self.services.values()
+        if obj not in self.started:
             return
 
-        stop_first = [a for a, b in self._dep if b == name and a in self.started]
-        for other in stop_first:
-            await self._stop(other)
+        # Stop services that depend on the current service
+        stop_first = [
+            dependent
+            for dependent, dependency in self._depencency_graph
+            if dependency == obj.__class__
+        ]
+        for stop in stop_first:
+            await self._stop(self.services[stop])
 
-        self.started.remove(name)
-        obj = self.services[name]
-        LOG.debug(f"Stopping [{name}]: {obj}")
+        self.started.remove(obj)
+        LOG.debug(f"Stopping: {_clsname(obj)}")
         if isinstance(obj, ManagedService):
             await obj.on_shutdown()
 
-    async def _start(self, name):
+    async def _start(self, obj):
         """Initialize a service, if supported and required."""
-        if name in self.started:
+        assert obj in self.services.values()
+        if obj in self.started:
             return
 
-        self.started.append(name)
-        obj = self.services[name]
-        LOG.debug(f"Starting [{name}]: {obj}")
+        self.started.append(obj)
+        LOG.debug(f"Starting: {_clsname(obj)}")
+
+        # Everyone depends on ServiceRegistry
+        if obj is not self:
+            self._depencency_graph.add((obj.__class__, self.__class__))
 
         if isinstance(obj, ManagedService):
             # Poor man's dependency injection
             argsspec = inspect.signature(obj.on_start)
             args = {}
-            for spec in argsspec.parameters.values():
-                self._dep.add((name, spec.name))
-                args[spec.name] = await self.use(spec.name, object)
+            for param in argsspec.parameters.values():
+                deptype = param.annotation
+                # Require service dependency
+                args[param.name] = await self.use(deptype)
+                # Remember service dependency graph
+                self._depencency_graph.add((obj.__class__, deptype))
 
             await obj.on_start(**args)
+
+
+class ManagedService(ABC):
+    @abstractmethod
+    async def on_start(self):
+        """Called when the managed service is first requested.
+
+        The method can request dependencies by accepting arguments with
+        type annotations referencing other services. ManagedService
+        instances are started before they are passed to this method.
+        """
+        pass
+
+    @abstractmethod
+    async def on_shutdown(self):
+        """Called during shutdown to perform cleanup tasks.
+
+        The shutdown order takes dependencies into account, all managed
+        dependencies requested during :meth:`on_startup` are still
+        available.
+        """
+        pass
 
 
 class Health(enum.Enum):
@@ -121,27 +162,6 @@ class Health(enum.Enum):
 class HealthReportingMixin:
     @abstractmethod
     async def check_health(self) -> tuple[Health, str]:
-        pass
-
-
-class ManagedService(ABC):
-    @abstractmethod
-    async def on_start(self):
-        """Called when the managed service is first requested.
-
-        The method can request dependencies via named arguments. Managed
-        dependencies are started before they are passed to this method.
-        """
-        pass
-
-    @abstractmethod
-    async def on_shutdown(self):
-        """Called during shutdown to perform cleanup tasks.
-
-        The shutdown order takes dependencies into account, all managed
-        dependencies requested during :meth:`on_startup` are still
-        available.
-        """
         pass
 
 
@@ -190,13 +210,13 @@ class BackgroundService(ManagedService, HealthReportingMixin):
 
     async def _run_wrapper(self):
         try:
-            LOG.debug(f"Starting background task: {self}")
+            LOG.debug(f"Background task starting: {_clsname(self)}")
             await self.run()
         except asyncio.CancelledError:
-            LOG.debug(f"Shutting down background task: {self}")
+            LOG.debug(f"Background task stopped: {_clsname(self)}")
             raise
         except BaseException:
-            LOG.exception(f"Failed background task: {self}")
+            LOG.exception(f"Background task failed: {_clsname(self)}")
             pass
 
     @abstractmethod
@@ -237,37 +257,31 @@ async def bootstrap(
     LOG.debug("Bootstrapping services...")
 
     ctx = ServiceRegistry()
-    ctx.register("config", config)
+    ctx.register(config)
+    ctx.register(bbblb.services.health.HealthService(interval=config.POLL_INTERVAL))
     ctx.register(
-        "health", bbblb.services.health.HealthService(interval=config.POLL_INTERVAL)
-    )
-    ctx.register(
-        "db",
         bbblb.services.db.DBContext(
             config.DB,
             create=config.DB_CREATE,
             migrate=config.DB_MIGRATE,
         ),
     )
-    ctx.register("bbb", bbblb.services.bbb.BBBHelper())
-    ctx.register("locks", bbblb.services.locks.LockManager())
+    ctx.register(bbblb.services.bbb.BBBHelper())
+    ctx.register(bbblb.services.locks.LockManager())
     ctx.register(
-        "poller",
         bbblb.services.poller.MeetingPoller(config),
     )
     ctx.register(
-        "importer",
         bbblb.services.recording.RecordingManager(config),
     )
     ctx.register(
-        "analytics",
         bbblb.services.analytics.AnalyticsHandler(config),
     )
-    ctx.register("tenants", bbblb.services.tenants.TenantCache(config))
+    ctx.register(bbblb.services.tenants.TenantCache(config))
 
     if autostart:
-        for name, service in ctx.services.items():
-            await ctx.use(name, service.__class__)
+        for service_type in ctx.services:
+            await ctx.use(service_type)
 
     LOG.debug("Bootstrapping completed!")
 

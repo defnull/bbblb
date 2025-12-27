@@ -42,8 +42,8 @@ async def maketoken(
     Tenant or Server tokens do not have scopes, their permissions are hard
     coded because tenants or servers can create their own tokens.
     """
-    config = await obj.use("config", BBBLBConfig)
-    db = await obj.use("db", DBContext)
+    config = await obj.use(BBBLBConfig)
+    db = await obj.use(DBContext)
 
     headers = {}
     payload = {

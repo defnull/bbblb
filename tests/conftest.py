@@ -45,7 +45,7 @@ async def services(config: bbblb.settings.BBBLBConfig):
 
 @pytest_asyncio.fixture(scope="function")
 async def db(services: bbblb.services.ServiceRegistry):
-    db = await services.use("db", bbblb.services.db.DBContext)
+    db = await services.use(bbblb.services.db.DBContext)
     for table in reversed(bbblb.model.Base.metadata.sorted_tables):
         async with db.session() as session, session.begin():
             await session.execute(table.delete())

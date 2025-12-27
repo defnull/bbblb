@@ -297,7 +297,7 @@ async def handle_callback_proxy(ctx: BBBLBApiRequest):
 
         # Intercept callbacks we are interested in
         if ctx.config.ANALYTICS_STORE and callback_type == "analytics":
-            analytics = await ctx.services.use("analytics", AnalyticsHandler)
+            analytics = await ctx.services.use(AnalyticsHandler)
             asyncio.create_task(analytics.store(callbacks[0].tenant, payload))
 
         # Forward callbacks to front-ends

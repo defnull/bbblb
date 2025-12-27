@@ -24,8 +24,7 @@ class HealthService(BackgroundService):
             try:
                 await asyncio.sleep(self.interval)
 
-                for name in sorted(self.sr.started):
-                    obj = self.sr.get(name)
+                for obj in sorted(self.sr.started, key=lambda s: s.__class__.__name__):
                     if not isinstance(obj, HealthReportingMixin):
                         continue
                     try:
@@ -33,6 +32,7 @@ class HealthService(BackgroundService):
                     except Exception as exc:
                         status = Health.CRITICAL
                         msg = f"Internal error in health check: {exc}"
+                    name = obj.__class__.__qualname__
                     self.checks[name] = (status, msg)
                     LOG.debug(f"[{name}] {status.name} {msg}")
             except asyncio.CancelledError:

@@ -28,7 +28,7 @@ type_choice = click.Choice(type_choices.choices)
 @async_command()
 async def override_list(obj: ServiceRegistry, tenant: str, type: list[str]):
     """List create or join overrides by tenant."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
 
     async with db.session() as session:
         if tenant:
@@ -73,7 +73,7 @@ async def override_set(
     or maxParticipants), or '+' to add items to a comma separated list
     parameter (e.g. disabledFeatures).
     """
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         db_tenant = (
             await session.execute(
@@ -122,7 +122,7 @@ async def override_unset(
     obj: ServiceRegistry, tenant: str, type: str, overrides: list[str]
 ):
     """Remove specific overrides on a tenant."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         db_tenant = (
             await session.execute(

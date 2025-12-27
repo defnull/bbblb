@@ -29,7 +29,7 @@ def server():
 @async_command()
 async def create(obj: ServiceRegistry, update: bool, domain: str, secret: str | None):
     """Create a new server or update a server secret."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
@@ -53,7 +53,7 @@ async def create(obj: ServiceRegistry, update: bool, domain: str, secret: str | 
 @async_command()
 async def enable(obj: ServiceRegistry, domain: str):
     """Enable a server and make it available for new meetings."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session:
         server = (
             await session.execute(model.Server.select(domain=domain))
@@ -81,7 +81,7 @@ async def enable(obj: ServiceRegistry, domain: str):
 @async_command()
 async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
     """Disable a server, so now new meetings are created on it."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
 
     async with db.session() as session:
         server = (
@@ -138,9 +138,7 @@ async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
     server = await meeting.awaitable_attrs.server
     tenant = await meeting.awaitable_attrs.server
     scoped_id = utils.add_scope(meeting.external_id, tenant.name)
-    bbb = (await obj.use("bbb", BBBHelper)).connect(
-        meeting.server.api_base, server.secret
-    )
+    bbb = (await obj.use(BBBHelper)).connect(meeting.server.api_base, server.secret)
 
     result = await bbb.action("end", {"meetingID": scoped_id})
     if result.success:
@@ -155,7 +153,7 @@ async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
 @async_command()
 async def list(obj: ServiceRegistry, with_secrets=False):
     """List all servers with their secrets."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
 
     async with db.session() as session:
         servers = (await session.execute(model.Server.select())).scalars()

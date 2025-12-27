@@ -8,7 +8,7 @@ from bbblb.services.poller import MeetingPoller
 async def test_update_load(
     orm: AsyncSession, services: ServiceRegistry, bbb_server: bbblb.model.Server
 ):
-    poller = await services.use("poller", MeetingPoller)
+    poller = await services.use(MeetingPoller)
     poller.task.cancel()  # type: ignore
 
     # Set a fake load value

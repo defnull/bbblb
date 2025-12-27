@@ -22,7 +22,7 @@ async def migrate(obj: ServiceRegistry, create: bool):
 
     WARNING: Make backups!
     """
-    config = await obj.use("config", BBBLBConfig)
+    config = await obj.use(BBBLBConfig)
 
     try:
         if create:

@@ -48,7 +48,7 @@ def migrate_state(state):
 @async_command()
 async def export(obj: ServiceRegistry, types, file: str):
     """Export current cluster state as JSON."""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
 
     export: dict[str, typing.Any] = {"v": 1}
 
@@ -134,7 +134,7 @@ async def import_(
     Use --nuke to forcefully end all meetings on obsolete servers or meetings.
 
     """
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     with click.open_file(file, "r") as fp:
         state = await asyncio.to_thread(json.load, fp)
 

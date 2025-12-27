@@ -23,7 +23,7 @@ async def recording(obj: ServiceRegistry):
 @async_command()
 async def _list(obj: ServiceRegistry):
     """List all recordings and their formats"""
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session, session.begin():
         stmt = model.Recording.select().options(
             sqlalchemy.orm.joinedload(model.Recording.tenant),
@@ -40,9 +40,9 @@ async def _list(obj: ServiceRegistry):
 @async_command()
 async def _delete(obj: ServiceRegistry, record_id):
     """Delete recordings (all formats)"""
-    importer = await obj.use("importer", RecordingManager)
+    importer = await obj.use(RecordingManager)
 
-    db = await obj.use("db", DBContext)
+    db = await obj.use(DBContext)
     async with db.session() as session, session.begin():
         stmt = model.Recording.select(model.Recording.record_id.in_(record_id))
         for record in (await session.execute(stmt)).scalars().all():
@@ -70,8 +70,8 @@ async def unpublish(obj: ServiceRegistry, record_id):
 async def _change_publish_flag(
     obj: ServiceRegistry, record_id, state: model.RecordingState
 ):
-    importer = await obj.use("importer", RecordingManager)
-    db = await obj.use("db", DBContext)
+    importer = await obj.use(RecordingManager)
+    db = await obj.use(DBContext)
 
     async with db.session() as session:
         stmt = model.Recording.select(model.Recording.record_id.in_(record_id)).options(
@@ -103,7 +103,7 @@ async def _change_publish_flag(
 @async_command()
 async def _import(obj: ServiceRegistry, tenant: str, publish: bool | None, file: str):
     """Import one or more recordings from a tar archive"""
-    importer = await obj.use("importer", RecordingManager)
+    importer = await obj.use(RecordingManager)
 
     async def reader(file):
         with click.open_file(file, "rb") as fp:
@@ -144,8 +144,8 @@ async def _import(obj: ServiceRegistry, tenant: str, publish: bool | None, file:
 @async_command()
 async def remove_orphans(obj: ServiceRegistry, dry_run: bool):
     """Remove recording DB entries that do not exist on disk."""
-    db = await obj.use("db", DBContext)
-    importer = await obj.use("importer", RecordingManager)
+    db = await obj.use(DBContext)
+    importer = await obj.use(RecordingManager)
     async with db.session() as session, session.begin():
         stmt = model.Recording.select().options(
             sqlalchemy.orm.joinedload(model.Recording.tenant),

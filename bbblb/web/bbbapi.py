@@ -97,7 +97,7 @@ class BBBApiRequest(ApiRequestContext):
         if self._tenant:
             return self._tenant
 
-        tenant_cache = await self.services.use("tenants", TenantCache)
+        tenant_cache = await self.services.use(TenantCache)
         realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
         self._tenant = await tenant_cache.get_tenant_by_realm(realm)
         LOG.debug(f"Tenant for realm={realm!r} -> {self._tenant or 'NOT FOUND'}")
@@ -692,7 +692,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
 
 @api("publishRecordings", methods=["GET"])
 async def handle_publish_recordings(ctx: BBBApiRequest):
-    importer = await ctx.services.use("importer", RecordingManager)
+    importer = await ctx.services.use(RecordingManager)
 
     tenant = await ctx.require_tenant()
     record_ids = (await ctx.require_param("recordID")).split(",")
@@ -754,7 +754,7 @@ async def handle_delete_recordings(ctx: BBBApiRequest):
 
     # Actually delete records on disk, even if they did not exist in db.
     # Do so in the background, as this may take some time.
-    importer = await ctx.services.use("importer", RecordingManager)
+    importer = await ctx.services.use(RecordingManager)
 
     for record_id in record_ids:
         asyncio.create_task(asyncio.to_thread(importer.delete, tenant.name, record_id))
