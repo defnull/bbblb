@@ -164,15 +164,15 @@ class BBBClient:
         url = yarl.URL(url, encoded=True)
 
         if timeout and timeout > 0:
-            timeout = aiohttp.ClientTimeout(total=timeout)
+            client_timeout = aiohttp.ClientTimeout(total=timeout)
         else:
-            timeout = TIMEOUT
+            client_timeout = TIMEOUT
 
         LOG.debug(f"Request: {url}")
         try:
             async with (
                 self.session.request(
-                    method, url, data=body, headers=headers, timeout=timeout
+                    method, url, data=body, headers=headers, timeout=client_timeout
                 ) as response,
             ):
                 if response.status not in (200,):
