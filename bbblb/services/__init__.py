@@ -73,7 +73,6 @@ class ServiceRegistry:
             raise AttributeError(f"Unknown service type: {_clsname(klass)}")
         if not (uninitialized_ok or obj in self.started):
             raise RuntimeError(f"Service not initialized yet: {_clsname(klass)}")
-        assert isinstance(obj, klass)
         return obj
 
     async def use(self, klass: type[T] = object) -> T:

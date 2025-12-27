@@ -13,6 +13,7 @@ from starlette.routing import Route
 from starlette.responses import Response, RedirectResponse, JSONResponse
 import bbblb
 from bbblb import utils
+from bbblb.services.poller import MeetingPoller
 from bbblb.services.recording import RecordingManager, playback_to_xml
 from bbblb.lib.bbb import (
     BBBResponse,
@@ -327,7 +328,11 @@ async def handle_create(ctx: BBBApiRequest):
             raise make_error("internalError", "No suitable servers available.")
 
         # Increase server load NOW (as fast as possible)
-        load = ctx.config.LOAD_PENALTY + ctx.config.LOAD_BASE
+        try:
+            size_hint = int(params.get("meta_bbb-meeting-size-hint", "0"))
+        except ValueError:
+            size_hint = 0
+        load = ctx.services.get(MeetingPoller).get_meeting_load(size_hint=size_hint)
         await ctx.session.execute(server.increment_load_stmt(load))
 
         # Try to create the meeting

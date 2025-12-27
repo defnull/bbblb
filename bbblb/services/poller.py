@@ -36,13 +36,6 @@ class MeetingPoller(BackgroundService):
         self.maxerror = config.POLL_FAIL
         self.minsuccess = config.POLL_RECOVER
 
-        self.load_base = config.LOAD_BASE
-        self.load_user = config.LOAD_USER
-        self.load_video = config.LOAD_VIDEO
-        self.load_voice = config.LOAD_VOICE
-        self.load_prediction = config.LOAD_PENALTY
-        self.load_cooldown = config.LOAD_COOLDOWN * 60
-
     async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
         self.lock = locks.create(
@@ -134,21 +127,17 @@ class MeetingPoller(BackgroundService):
                 voice = int(mxml.findtext("voiceParticipantCount") or 0)
                 video = int(mxml.findtext("videoCount") or 0)
                 age = max(0.0, time.time() - int(mxml.findtext("createTime") or 0))
+                try:
+                    size_hint = int(mxml.findtext("meta/bbb-meeting-size-hint") or 0)
+                except ValueError:
+                    size_hint = 0
 
                 stats.meetings += 1
                 stats.users += users
                 stats.voice += voice
                 stats.video += video
                 stats.largest = max(stats.largest, users)
-
-                stats.load += self.load_base
-                stats.load += users * self.load_user
-                stats.load += voice * self.load_voice
-                stats.load += video * self.load_video
-                if age < self.load_cooldown:
-                    stats.load += self.load_prediction * (
-                        1.0 - (age / self.load_cooldown)
-                    )
+                stats.load += self.get_meeting_load(users, voice, video, age, size_hint)
 
                 if meeting_id not in meetings:
                     if parent_id:
@@ -203,3 +192,26 @@ class MeetingPoller(BackgroundService):
                 )
 
             await session.commit()
+
+    def get_meeting_load(self, users=2, voice=2, video=2, age=0.0, size_hint=0):
+        config = self.config
+
+        # Actual load calculated from user, voice and video counts
+        load = config.LOAD_BASE
+        load += users * config.LOAD_USER
+        load += voice * config.LOAD_VOICE
+        load += video * config.LOAD_VIDEO
+
+        # New meetings are assumed to have more users than they actually have
+        if age < (config.LOAD_COOLDOWN * 60):
+            # Use the front-end provided size hint capped between
+            # LOAD_ESTIMATE and 5*LOAD_ESTIMATE, or just LOAD_ESTIMATE.
+            ghosts = max(config.LOAD_RESERVED, min(size_hint, config.LOAD_RESERVED * 5))
+            # Reduce number of ghosts based on meeting age
+            ghosts *= 1.0 - (age / (config.LOAD_COOLDOWN * 60))
+            # Assume every (future) user has voice activated, and 10% have video activated
+            load += ghosts * config.LOAD_USER
+            load += ghosts * config.LOAD_VOICE
+            load += ghosts * 0.1 * config.LOAD_VIDEO
+
+        return load

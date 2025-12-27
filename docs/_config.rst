@@ -95,20 +95,22 @@ Additional load counted for each voice user in a meeting.
 
 Additional load counted for each video user in a meeting.
 
-``LOAD_PENALTY`` (type: ``float``, default: ``20.0``)
+``LOAD_RESERVED`` (type: ``float``, default: ``20.0``)
 
-Additional load penalty for new meetings.
-New meetings are counted with a higher load until their actual
-load has stabilized to avoid uneven distribution during peak
-hours.
-The load penalty should roughly match the load of a 'typical'
-meeting on your cluster and will decrease over time based on
-meeting age. See LOAD_COOLDOWN.
+Reserved seats for new meetings.
+When new meetings are created, their final user count is still
+unknown. To avoid uneven meeting distribution during peaks hours,
+we reserve up to LOAD_RESERVED seats for additional users that are
+likely to join during the first LOAD_COOLDOWN minutes of a new
+meeting.
+The number of reserved seats will slowly decrease over time until
+LOAD_COOLDOWN minutes have passed.
 
-``LOAD_COOLDOWN`` (type: ``float``, default: ``30``)
+``LOAD_COOLDOWN`` (type: ``float``, default: ``30.0``)
 
 Number of minutes after which new meetings are no longer impacted
-by LOAD_PENALTY. The applied penalty decreases linearly over time.
+by LOAD_RESERVED. The accounted number of reserved seats
+decreases linearly over time.
 
 ``ANALYTICS_STORE`` (type: ``bool``, default: ``False``)
 
