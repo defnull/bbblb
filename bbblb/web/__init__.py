@@ -40,11 +40,11 @@ class ApiRequestContext:
 
     @cached_property
     def bbb(self) -> BBBHelper:
-        return self.services.get("bbb", BBBHelper)
+        return self.services.get(BBBHelper)
 
     @cached_property
     def db(self) -> DBContext:
-        return self.services.get("db", DBContext)
+        return self.services.get(DBContext)
 
     @cached_property
     def session(self):

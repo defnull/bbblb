@@ -360,7 +360,7 @@ async def handle_recording_upload(ctx: BBBLBApiRequest):
     force_tenant = ctx.request.query_params.get("tenant")
 
     try:
-        importer = ctx.services.get("importer", RecordingManager)
+        importer = ctx.services.get(RecordingManager)
         task = await importer.start_import(
             ctx.request.stream(), force_tenant=force_tenant
         )
