@@ -25,6 +25,7 @@ from bbblb.lib.bbb import (
     verify_checksum_query,
 )
 from bbblb import model
+from bbblb.services.tenants import TenantCache
 from bbblb.web import ApiRequestContext
 
 LOG = logging.getLogger(__name__)
@@ -95,12 +96,12 @@ class BBBApiRequest(ApiRequestContext):
     async def require_tenant(self):
         if self._tenant:
             return self._tenant
-        try:
-            realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
-            self._tenant = await model.Tenant.get(
-                self.session, realm=realm, enabled=True
-            )
-        except model.NoResultFound:
+
+        tenant_cache = await self.services.use("tenants", TenantCache)
+        realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
+        self._tenant = await tenant_cache.get_tenant_by_realm(realm)
+        LOG.debug(f"Tenant for realm={realm!r} -> {self._tenant or 'NOT FOUND'}")
+        if not self._tenant:
             raise make_error(
                 "checksumError",
                 "Unknown tenant, unable to perform checksum security check",
@@ -339,8 +340,10 @@ async def handle_create(ctx: BBBApiRequest):
             ),
         )
 
-    # Apply tenant-specific create call defaults and overrides
-    tenant.apply_overrides(params)
+    # Apply tenant-specific create call overrides
+    for override in tenant.overrides:
+        if override.type == "create":
+            override.apply(params)
 
     # Enforce BBBLB specific overrides
     params["meetingID"] = scoped_id
@@ -408,6 +411,12 @@ async def handle_join(ctx: BBBApiRequest):
 
     await ctx.session.execute(server.increment_load_stmt(ctx.config.LOAD_USER))
     await ctx.session.commit()
+
+    # Apply tenant-specific join call overrides
+    for override in tenant.overrides:
+        if override.type == "join":
+            override.apply(params)
+
     await ctx.session.close()  # Give connection back to pool
 
     async with ctx.bbb.connect(server.api_base, server.secret) as bbb:

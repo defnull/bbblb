@@ -225,6 +225,7 @@ async def bootstrap(
     import bbblb.services.db
     import bbblb.services.bbb
     import bbblb.services.health
+    import bbblb.services.tenants
 
     if logging:
 
@@ -262,6 +263,7 @@ async def bootstrap(
         "analytics",
         bbblb.services.analytics.AnalyticsHandler(config),
     )
+    ctx.register("tenants", bbblb.services.tenants.TenantCache(config))
 
     if autostart:
         for name, service in ctx.services.items():

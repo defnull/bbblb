@@ -181,6 +181,12 @@ class BBBLBConfig(BaseConfig):
     #: reach BBBLB.
     TENANT_HEADER: str = "Host"
 
+    #: Cache tenant info for a couple of seconds before requesting fresh info from the
+    #: database. Even a short cache time improves API latency by a lot. The only downside
+    #: is that tenant changes (e.g. new secret) may take a couple of seconds to take
+    #: effect.
+    TENANT_CACHE: int = 10
+
     #: If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
     #: tenants. API clients will still see the unmodified meeting ID, but the scoped
     #: ID may end up in recording metadata and logs.

@@ -1,12 +1,13 @@
 import pytest
 import pytest_asyncio
 from bbblb.lib.bbb import sign_query
+from bbblb.services.tenants import TenantCache
 from conftest import TestClient
 import lxml.etree
 from unittest.mock import MagicMock
 import bbblb.web.bbbapi
 from bbblb import model
-
+from bbblb.services import ServiceRegistry
 
 @pytest_asyncio.fixture(scope="function")
 async def mock_request(config, services):
@@ -24,7 +25,7 @@ def test_index(client: TestClient):
     assert xml.findtext("returncode") == "SUCCESS"
 
 
-async def test_tenant_detection(mock_request: MagicMock, orm: model.AsyncSession):
+async def test_tenant_detection(mock_request: MagicMock, orm: model.AsyncSession, services: ServiceRegistry):
     mock_request.headers.get.side_effect = dict(Host="foo.local").get
 
     async with bbblb.web.bbbapi.BBBApiRequest(mock_request) as ctx:
@@ -35,6 +36,8 @@ async def test_tenant_detection(mock_request: MagicMock, orm: model.AsyncSession
     foo_tenant = model.Tenant(name="foo", realm="foo.local", secret="meh")
     orm.add(foo_tenant)
     await orm.commit()
+
+    await services.get("tenants", TenantCache).refresh_cache(force=True)
 
     async with bbblb.web.bbbapi.BBBApiRequest(mock_request) as ctx:
         tenant = await ctx.require_tenant()

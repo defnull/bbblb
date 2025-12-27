@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    String,
     MetaData,
     Select,
     Text,
@@ -22,7 +23,7 @@ from sqlalchemy import (
     update,  # noqa: F401
     insert,  # noqa: F401
 )
-from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession, AsyncConnection
 
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -30,7 +31,12 @@ from sqlalchemy.orm import (
     mapped_column,
     relationship,
     validates,
+    joinedload,  # noqa: F401
+    selectinload,  # noqa: F401
 )
+
+from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
+from sqlalchemy.dialects.postgresql import insert as postgres_upsert
 
 from sqlalchemy.exc import (
     NoResultFound,  # noqa: F401
@@ -152,6 +158,13 @@ class ORMMixin:
             await session.execute(cls.select(*a, **filter).limit(1))
         ).scalar_one_or_none()
 
+    @classmethod
+    def upsert(cls, conn: AsyncConnection):
+        if conn.dialect.name == "sqlite":
+            return sqlite_upsert(cls)
+        else:
+            return postgres_upsert(cls)
+
 
 class Base(ORMMixin, AsyncAttrs, DeclarativeBase):
     __abstract__ = True
@@ -170,7 +183,10 @@ class Base(ORMMixin, AsyncAttrs, DeclarativeBase):
     }
 
     def __str__(self):
-        return f"{self.__class__.__name__}({getattr(self, 'id', None)})"
+        oid = getattr(self, "id", None)
+        if oid is None:
+            oid = "?"
+        return f"{self.__class__.__name__}({oid})"
 
 
 class Lock(Base):
@@ -192,77 +208,86 @@ class Tenant(Base):
     realm: Mapped[str] = mapped_column(unique=True, nullable=False)
     secret: Mapped[str] = mapped_column(unique=True, nullable=False)
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
-
-    # Default values or overrides for create call parameters.
-    # The key should match a BBB create call parameter. The value must start with a control flag:
-    # '=' -> Enforce a value for this parameter. If empty, then remove this parameter.
-    # '?' -> Set parameter only if missing.
-    # '<' -> Cap a numeric parameter (e.g. 'duration' or 'maxParticipants') to a maximum value.
-    #        Override parameter if is is missing, below or equal to zero (which means 'unlimited'),
-    #        or larger than the desired value.
-    # '+' -> Add values to a comma separated list (e.g. disabledFeatures)
-    overrides: Mapped[dict[str, str]] = mapped_column(
-        JSON, nullable=False, default=dict
+    overrides: Mapped[list["TenantOverride"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan", passive_deletes=True
     )
-
     meetings: Mapped[list["Meeting"]] = relationship(
         back_populates="tenant", cascade="all, delete-orphan"
     )
     recordings: Mapped[list["Recording"]] = relationship(back_populates="tenant")
 
-    @validates("overrides")
-    def validate_overrides(self, key, params):
-        if not isinstance(params, (dict)):
-            raise TypeError(f"Tenant.{key} must be a dict")
-        for key, value in params.items():
-            if not key:
-                raise TypeError(f"Tenant.{key} keys must be non-empty strings")
-            if not value or not isinstance(value, str):
-                raise TypeError(f"Tenant.{key} values must be non-empty strings")
-            if value[0] not in "=?<+":
-                raise TypeError(
-                    "Tenant.{key} values must start with a valid action flag"
-                )
-        return params
-
-    def clear_overrides(self):
-        self.overrides = {}
-
-    def add_override(
-        self, name: str, operator: typing.Literal["=", "?", "<", "+"], value: str
-    ):
-        self.overrides = {**self.overrides, name: operator + value}
-
-    def remove_override(self, name: str):
-        self.overrides = {k: v for k, v in self.overrides.items() if k != name}
-
-    def apply_overrides(self, params):
-        for name, value in self.overrides.items():
-            action, value = value[0], value[1:]
-            if action == "=":
-                params[name] = value
-            elif action == "?":
-                params.setdefault(name, value)
-            elif action == "<":
-                try:
-                    orig = int(params[name])
-                except (ValueError, KeyError):
-                    orig = -1
-                if orig <= 0 or orig > int(value):
-                    params[name] = value
-            elif action == "+":
-                params = params.get("key", "").split(",")
-                for add in value.split():
-                    if add not in params:
-                        params.append(add)
-                params[name] = ",".join(filter(None, params))
-            else:
-                LOG.warning(
-                    f"{self} has bad create setting: {name} = {action + value!r}"
-                )
-
     def __str__(self):
         return f"Tenant({self.name})"
+
+
+OPERATOR_FORCE = "="
+OPERATOR_FALLBACK = "?"
+OPERATOR_MAX = "<"
+OPERATOR_ADD = "+"
+OPERATOR__ALL = [OPERATOR_FORCE, OPERATOR_FALLBACK, OPERATOR_MAX, OPERATOR_ADD]
+
+
+class TenantOverride(Base):
+    __tablename__ = "tenant_override"
+    __table_args__ = (UniqueConstraint("tenant_fk", "type", "param"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_fk: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    tenant: Mapped["Tenant"] = relationship(lazy=False)
+
+    type: Mapped[str] = mapped_column(nullable=False)
+    param: Mapped[str] = mapped_column(nullable=False)
+    op: Mapped[str] = mapped_column(
+        String(1), nullable=False, default=OPERATOR_FALLBACK
+    )
+    value: Mapped[str] = mapped_column(nullable=False)
+
+    @validates("op")
+    def validate_op(self, key, value):
+        if value not in OPERATOR__ALL:
+            raise ValueError(
+                f"TenantOverride.op must be one of: {', '.join(OPERATOR__ALL)}"
+            )
+        return value
+
+    @validates("type")
+    def validate_type(self, key, value):
+        if value not in ("create", "join"):
+            raise ValueError("TenantOverride.type must be 'create' or 'join'")
+        return value
+
+    @validates("param")
+    def validate_param(self, key, value: str):
+        if not value or not value.strip():
+            raise ValueError("TenantOverride.param must be a non-empty string")
+        return value
+
+    def apply(self, params):
+        if self.op == OPERATOR_FORCE:
+            if self.value:
+                params[self.param] = self.value
+            else:
+                params.pop(self.param, None)
+        elif self.op == OPERATOR_FALLBACK:
+            params.setdefault(self.param, self.value)
+        elif self.op == OPERATOR_MAX:
+            try:
+                orig = int(params[self.param])
+            except (ValueError, KeyError):
+                orig = -1
+            if orig <= 0 or orig > int(self.value):
+                params[self.param] = self.value
+        elif self.op == OPERATOR_ADD:
+            params = params.get(self.param, "").split(",")
+            for add in self.value.split():
+                if add not in params:
+                    params.append(add)
+            params[self.param] = ",".join(filter(None, params))
+
+    def __str__(self):
+        return f"TenantOverride({self.tenant}, {self.type}, {self.param}{self.op}{self.value})"
 
 
 class ServerHealth(enum.Enum):

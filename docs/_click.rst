@@ -22,6 +22,7 @@ bbblb
   =========  ===============================================================================
   db         Manage database                                                                
   maketoken  Generate an Admin Token that can be used to authenticate against the BBBLB API.
+  override   Manage tenant overrides                                                        
   recording  Recording management.                                                          
   server     Manage servers                                                                 
   state      Tools to export and import cluster state in JSON files.                        
@@ -91,6 +92,90 @@ coded because tenants or servers can create their own tokens.
   SUBJECT               Required argument                                                     
   SCOPE                 Optional argument                                                     
   ====================  ======================================================================
+
+override
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb override [OPTIONS] COMMAND [ARGS]...``
+
+Manage tenant overrides
+
+.. table:: Sub-Commands
+  :width: 100%
+
+  =======  ===========================================================
+  Command  Help                                                       
+  =======  ===========================================================
+  list     List create or join overrides by tenant.                   
+  set      Override create or join call parameters for a given tenant.
+  unset    Remove specific overrides on a tenant.                     
+  =======  ===========================================================
+
+override list
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb override list [OPTIONS] [TENANT]``
+
+List create or join overrides by tenant.
+
+.. table:: Options
+  :width: 100%
+
+  ===========  =========================================================
+  Option       Help                                                     
+  ===========  =========================================================
+  TENANT       Optional argument                                        
+  --type LIST  List specific override types only  [default: create,join]
+  ===========  =========================================================
+
+override set
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb override set [OPTIONS] TENANT {create|join} NAME=VALUE``
+
+Override create or join call parameters for a given tenant.
+
+You can define any number of overrides per tenant as PARAM=VALUE
+pairs. PARAM should match a BBB API parameter supported by the given
+type (create or join) and the given VALUE will be enforced on all
+future API calls issued by this tenant. If VALUE is empty, then the
+parameter will be removed from API calls.
+
+Instead of the '=' operator you can also use '?' to define a
+fallback for missing parameters instead of an override, '<' to
+define a maximum value for numeric parameters (e.g. duration
+or maxParticipants), or '+' to add items to a comma separated list
+parameter (e.g. disabledFeatures).
+
+.. table:: Options
+  :width: 100%
+
+  ==========  =====================================================================
+  Option      Help                                                                 
+  ==========  =====================================================================
+  --clear     Remove all overrides for that tenant and type before adding new ones.
+  TENANT      Required argument                                                    
+  TYPE        Required argument                                                    
+  NAME=VALUE  Optional argument                                                    
+  ==========  =====================================================================
+
+override unset
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb override unset [OPTIONS] TENANT {create|join} NAME``
+
+Remove specific overrides on a tenant.
+
+.. table:: Options
+  :width: 100%
+
+  ======  =================
+  Option  Help             
+  ======  =================
+  TENANT  Required argument
+  TYPE    Required argument
+  NAME    Optional argument
+  ======  =================
 
 recording
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -353,15 +438,14 @@ Manage tenants
 .. table:: Sub-Commands
   :width: 100%
 
-  ========  ===============================================
-  Command   Help                                           
-  ========  ===============================================
-  create                                                   
-  enable    Enable a tenant                                
-  disable   Disable a tenant                               
-  list      List all tenants with their realms and secrets.
-  override  Manage meeting overrides                       
-  ========  ===============================================
+  =======  ===============================================
+  Command  Help                                           
+  =======  ===============================================
+  create                                                  
+  enable   Enable a tenant                                
+  disable  Disable a tenant                               
+  list     List all tenants with their realms and secrets.
+  =======  ===============================================
 
 tenant create
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -419,84 +503,4 @@ tenant list
 ``Usage: bbblb tenant list [OPTIONS]``
 
 List all tenants with their realms and secrets.
-
-tenant override
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``Usage: bbblb tenant override [OPTIONS] COMMAND [ARGS]...``
-
-Manage meeting overrides
-
-.. table:: Sub-Commands
-  :width: 100%
-
-  =======  ===================================================
-  Command  Help                                               
-  =======  ===================================================
-  list     List overrides for all or a specific tenant.       
-  set      Override create call parameters for a given tenant.
-  unset    Remove overrides from a given tenant.              
-  =======  ===================================================
-
-tenant override list
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``Usage: bbblb tenant override list [OPTIONS] [TENANT]``
-
-List overrides for all or a specific tenant.
-
-.. table:: Options
-  :width: 100%
-
-  ======  =================
-  Option  Help             
-  ======  =================
-  TENANT  Optional argument
-  ======  =================
-
-tenant override set
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``Usage: bbblb tenant override set [OPTIONS] TENANT NAME=VALUE``
-
-Override create call parameters for a given tenant.
-
-You can define any number of create parameter overrides per tenant as
-PARAM=VALUE pairs. PARAM should match a BBB create call API parameter
-and the given VALUE will be enforced on all future create calls
-issued by this tenant. If VALUE is empty, then the parameter will be
-removed from create calls.
-
-Instead of the '=' operator you can also use '?' to define a fallback
-instead of an override, '<' to define a maximum value for numeric
-parameters (e.g. duration or maxParticipants), or '+' to add items
-to a comma separated list parameter (e.g. disabledFeatures).
-
-.. table:: Options
-  :width: 100%
-
-  ==========  ====================================================
-  Option      Help                                                
-  ==========  ====================================================
-  --clear     Remove all overrides not mentioned during this call.
-  TENANT      Required argument                                   
-  NAME=VALUE  Optional argument                                   
-  ==========  ====================================================
-
-tenant override unset
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``Usage: bbblb tenant override unset [OPTIONS] TENANT NAME``
-
-Remove overrides from a given tenant.
-
-.. table:: Options
-  :width: 100%
-
-  ======  =================
-  Option  Help             
-  ======  =================
-  TENANT  Required argument
-  NAME    Optional argument
-  ======  =================
 

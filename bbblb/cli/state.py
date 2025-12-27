@@ -20,6 +20,21 @@ def state():
 type_choices = MultiChoice(["servers", "tenants"])
 
 
+def migrate_state(state):
+    v = state.get("v", 0)
+    if v == 0:
+        # Tenant overrides now have another level for the override type
+        for tenant in state.get("tenants", {}).values():
+            if "overrides" in tenant:
+                tenant["overrides"] = {"create": tenant["overrides"]}
+        v += 1
+    if v == 1:
+        return state  # current
+    raise NotImplementedError(
+        f"You are trying to load a state with an unsupported version: {v}"
+    )
+
+
 @state.command()
 @click.option(
     "--include",
@@ -35,7 +50,7 @@ async def export(obj: ServiceRegistry, types, file: str):
     """Export current cluster state as JSON."""
     db = await obj.use("db", DBContext)
 
-    export: dict[str, typing.Any] = {}
+    export: dict[str, typing.Any] = {"v": 1}
 
     async with db.session() as session:
         if "servers" in types:
@@ -49,13 +64,24 @@ async def export(obj: ServiceRegistry, types, file: str):
 
         if "tenants" in types:
             export["tenants"] = {}
-            stmt = model.Tenant.select().order_by(model.Tenant.name)
+            stmt = (
+                model.Tenant.select()
+                .options(model.selectinload(model.Tenant.overrides))
+                .order_by(model.Tenant.name)
+            )
             for tenant in (await session.execute(stmt)).scalars():
                 export["tenants"][tenant.name] = {
                     "secret": tenant.secret,
                     "realm": tenant.realm,
                     "enabled": tenant.enabled,
-                    "overrides": tenant.overrides,
+                    "overrides": {
+                        api: {
+                            f"{o.param}": f"{o.op}{o.value}"
+                            for o in sorted(tenant.overrides, key=lambda o: o.param)
+                            if o.type == api
+                        }
+                        for api in ("join", "create")
+                    },
                 }
 
     with click.open_file(file, "w") as fp:
@@ -112,6 +138,8 @@ async def import_(
     with click.open_file(file, "r") as fp:
         state = await asyncio.to_thread(json.load, fp)
 
+    state = migrate_state(state)
+
     if dry_run:
         click.echo("=== DRY RUN ===")
 
@@ -154,7 +182,7 @@ def logchange(obj, attr, value):
     if oldval == value:
         return False
     setattr(obj, attr, value)
-    click.echo(f"{obj} changed: {attr} from {oldval!r} to {value!r}")
+    click.echo(f"{obj} changed: {attr} from {oldval} to {value}")
     return True
 
 
@@ -211,7 +239,9 @@ async def sync_tenants(
     nuke: bool,
     dry_run: bool,
 ):
-    cur = await session.execute(model.Tenant.select().with_for_update())
+    cur = await session.execute(
+        model.Tenant.select().options(model.selectinload(model.Tenant.overrides))
+    )
     tenants = {tenant.name: tenant for tenant in cur.scalars()}
     changed = False
 
@@ -227,7 +257,31 @@ async def sync_tenants(
         changed |= logchange(tenant, "enabled", tenant_conf.get("enabled", True))
         changed |= logchange(tenant, "secret", tenant_conf["secret"])
         changed |= logchange(tenant, "realm", tenant_conf["realm"])
-        changed |= logchange(tenant, "overrides", tenant_conf.get("overrides") or {})
+
+        # Sync overrides
+        ov_orig = {(o.type, o.param): o for o in tenant.overrides}
+        ob_found = set()
+        for otype, overrides in tenant_conf.get("overrides", {}).items():
+            for oparam, opvalue in overrides.items():
+                op, value = opvalue[0], opvalue[1:]
+                if op not in model.OPERATOR__ALL:
+                    op = model.OPERATOR_FALLBACK
+
+                cmp = ov_orig.get((otype, oparam), None)
+                if not cmp:
+                    cmp = model.TenantOverride(
+                        type=otype, param=oparam, op=op, value=value
+                    )
+                    tenant.overrides.append(cmp)
+                    click.echo(f"{cmp} added")
+                changed |= logchange(cmp, "op", op)
+                changed |= logchange(cmp, "value", value)
+                ob_found.add(cmp)
+        for o in list(tenant.overrides):
+            if o not in ob_found:
+                click.echo(f"{o} removed")
+                tenant.overrides.remove(o)
+                changed = True
 
     # Disable or remove obsolete tenants
     for obsolete in set(tenants) - set(target):

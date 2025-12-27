@@ -37,6 +37,13 @@ tenant realms to find the correct tenant. This defaults to the `Host`
 header, which means each tenant needs to use a different (sub-)domain to
 reach BBBLB.
 
+``TENANT_CACHE`` (type: ``int``, default: ``10``)
+
+Cache tenant info for a couple of seconds before requesting fresh info from the
+database. Even a short cache time improves API latency by a lot. The only downside
+is that tenant changes (e.g. new secret) may take a couple of seconds to take
+effect.
+
 ``SCOPED_MEETING_IDS`` (type: ``bool``, default: ``True``)
 
 If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
