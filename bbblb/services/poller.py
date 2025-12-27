@@ -57,20 +57,13 @@ class MeetingPoller(BackgroundService):
                 # Short random sleep to give other proceses a chance
                 await asyncio.sleep(random.random() * self.interval)
 
-                # Acquire exclusive lock, or try again
-                if not await self.lock.try_acquire():
-                    continue
+                # Run loop while holding the lock, or continue and try again
+                await self.lock.try_run_locked(self.poll_loop)
 
-                try:
-                    LOG.info("Starting poller loop ...")
-                    await self.poll_loop()
-                finally:
-                    await self.lock.try_release()
-                    self.locked = False
             except asyncio.CancelledError:
                 LOG.info("Poller shutting down...")
                 raise
-            except BaseException:
+            except Exception:
                 LOG.exception("Unhandled polling error")
                 continue  # Recover by starting another loop
 

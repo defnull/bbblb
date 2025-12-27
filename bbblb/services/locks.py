@@ -104,3 +104,16 @@ class NamedLock:
                 f"Error while trying to release {self.name!r} as {PROCESS_IDENTITY}"
             )
             return False
+
+    async def try_run_locked(self, callable, *a, **ka):
+        """Run an async function while holding the lock.
+
+        Return (False, None) if the lock could not be acquired,
+        or (True, AnyResult) on success."""
+        if not await self.try_acquire():
+            return False, None
+        try:
+            result = await callable(*a, **ka)
+            return True, result
+        finally:
+            await self.try_release()
