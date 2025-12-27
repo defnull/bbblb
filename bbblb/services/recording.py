@@ -21,6 +21,7 @@ from bbblb import model, utils
 from bbblb.services import BackgroundService
 from bbblb.services.bbb import BBBHelper
 from bbblb.services.db import DBContext
+from bbblb.services.locks import LockManager
 from bbblb.settings import BBBLBConfig
 from bbblb.lib.bbb import ETree, XML, SubElement
 
@@ -177,9 +178,12 @@ class RecordingManager(BackgroundService):
         self.poll_interval = config.POLL_INTERVAL
         self.auto_import = True
 
-    async def on_start(self, db: DBContext, bbb: BBBHelper):
+    async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
         self.bbb = bbb
+        self.lock = locks.create(
+            "importer", datetime.timedelta(seconds=self.poll_interval) * 2
+        )
 
         # Create all directories we need, if missing
         for dir in (d for d in self.__dict__.values() if isinstance(d, Path)):
@@ -193,9 +197,7 @@ class RecordingManager(BackgroundService):
             while True:
                 try:
                     await asyncio.sleep(self.poll_interval)
-                    if self.auto_import:
-                        await self.schedule_waiting()
-                    await self.cleanup()
+                    await self.lock.try_run_locked(self.run_locked)
                 except asyncio.CancelledError:
                     raise
                 except BaseException:
@@ -203,6 +205,11 @@ class RecordingManager(BackgroundService):
                     continue
         finally:
             await self.close()
+
+    async def run_locked(self):
+        if self.auto_import:
+            await self.schedule_waiting()
+        await self.cleanup()
 
     async def schedule_waiting(self):
         """Pick up waiting tasks from inbox"""
