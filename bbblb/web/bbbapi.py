@@ -18,6 +18,7 @@ from bbblb.lib.bbb import (
     BBBResponse,
     BBBError,
     ETree,
+    Element,
     SubElement,
     make_error,
     XML,
@@ -539,7 +540,7 @@ async def handle_get_meetings(ctx: BBBApiRequest):
         )
         servers = (await session.execute(stmt)).scalars()
 
-    result_xml: ETree = XML.response(XML.returncode("SUCCESS"))
+    result_xml = typing.cast(Element, XML.response(XML.returncode("SUCCESS")))
     all_meetings = SubElement(result_xml, "meetings")
 
     tasks: list[typing.Awaitable[BBBResponse]] = []
@@ -643,11 +644,11 @@ async def handle_get_recordings(ctx: BBBApiRequest):
     else:
         stmt = stmt.limit(ctx.config.MAX_ITEMS)
 
-    result_xml: ETree = XML.response(XML.returncode("SUCCESS"))
+    result_xml: Element = XML.response(XML.returncode("SUCCESS"))
     all_recordings = SubElement(result_xml, "recordings")
 
     for rec in (await ctx.session.execute(stmt)).scalars():
-        rec_xml: ETree = XML.recording(
+        rec_xml: Element = XML.recording(
             XML.recordID(rec.record_id),
             XML.meetingID(rec.external_id),
             XML.internalMeetingID(rec.record_id),  # TODO: Really always the case?

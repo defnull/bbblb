@@ -23,7 +23,7 @@ from bbblb.services.bbb import BBBHelper
 from bbblb.services.db import DBContext
 from bbblb.services.locks import LockManager
 from bbblb.settings import BBBLBConfig
-from bbblb.lib.bbb import ETree, XML, SubElement
+from bbblb.lib.bbb import ETree, XML, Element, SubElement
 
 LOG = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class RecordingImportError(RuntimeError):
     pass
 
 
-def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> ETree:
+def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> Element:
     orig = lxml.etree.fromstring(playback.xml)
     playback_domain = config.PLAYBACK_DOMAIN.format(
         DOMAIN=config.DOMAIN, REALM=playback.recording.tenant.realm

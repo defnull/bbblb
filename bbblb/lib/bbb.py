@@ -15,6 +15,7 @@ import yarl
 LOG = logging.getLogger(__name__)
 XML = lxml.builder.ElementMaker()
 ETree: typing.TypeAlias = lxml.etree._Element | lxml.etree._ElementTree
+Element: typing.TypeAlias = lxml.etree._Element
 SubElement = lxml.etree.SubElement
 
 LOG = logging.getLogger(__name__)
