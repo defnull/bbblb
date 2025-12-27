@@ -24,7 +24,7 @@ class HealthService(BackgroundService):
             try:
                 await asyncio.sleep(self.interval)
 
-                for name in self.sr.started:
+                for name in sorted(self.sr.started):
                     obj = self.sr.get(name)
                     if not isinstance(obj, HealthReportingMixin):
                         continue
