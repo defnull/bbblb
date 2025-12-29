@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from functools import partial
 from starlette.applications import Starlette
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse
 from functools import cached_property
@@ -70,6 +70,13 @@ async def format_redirect_app(format, scope, receive, send):
     await response(scope, receive, send)
 
 
+def redirect(src, dst):
+    async def handler(request):
+        return RedirectResponse(url=dst)
+
+    return Route(src, endpoint=handler)
+
+
 def make_routes(config: BBBLBConfig):
     from bbblb.web import bbbapi, bbblbapi
 
@@ -98,6 +105,10 @@ def make_routes(config: BBBLBConfig):
             Mount(f"/{format}", app=partial(format_redirect_app, format))
             for format in PLAYBACK_FROM_ROOT_FORMATS
         ],
+        # Redirect non-slash requests to prefix mounts, because automatic slash handling
+        # breaks if there are other routes matching the non-slash request :/
+        redirect("/bigbluebutton/api", "/bigbluebutton/api/"),
+        redirect("/bbblb/api", "/bbblb/api/"),
         # Serve static files from the {PATH_DATA}/htdocs/ folder, or fall back to
         # files shipped with BBBLB. This is just for convenience, BBBLB itself
         # does not need any static files.
