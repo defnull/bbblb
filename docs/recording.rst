@@ -1,16 +1,13 @@
-Recording Management
-====================
+Recording Internals
+===============================
 
 In a cluster setup, recordings usually do not stay on the BBB nodes
 there were created on, but are transferred to the loadbalancer and made
 available via the same URL users and applications use to access the
 cluster. Here is how that works.
 
-Getting Started
----------------
-
-Recording Storage and Directory Structure
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Directory Structure
+-------------------
 
 BBBLB stores recordings and temporary files in subdirectories relative
 to the ``{PATH_DATA}/recordings/`` directory. The entire ``recordings``
@@ -45,84 +42,44 @@ directories and all their subdirectories.
       directory. You may want to clear out this directory from time to
       time.
 
-Auto-import recordings to BBBLB
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto-Import from BBB
+--------------------
 
 To automatically import recordings from meetings created via BBBLB, we
-can hook into the ``post_publish`` script hook mechanism of BBB. Put the
-``examples/post_publish_bbblb.rb`` script into the
-``/usr/local/bigbluebutton/core/scripts/post_publish/`` directories on
-all your BBB back-end servers and make them executable. The script will
-run every time BBB finishes generating a recording, and automatically
-upload new recording to the BBBLB server that created the meeting.
+can hook into the ``post_publish`` script hook mechanism of BBB. See :ref:`post-publish`.
 
-The recordings will end up in
+The uploaded recordings will end up in
 ``{PATH_DATA}/recordings/storage/{tenant}/{record_id}/{format}`` and BBB
 will list the recording as ``unpublished`` by default. After publishing
 a recording via the BBB API, BBBLB will create a symlink in
 ``{PATH_DATA}/recordings/public/{format}/{record_id}`` that points to
 the corresponding ``storage`` directory. Only the ``public`` directory
-ths served to clients, to ensure they cannot access unpublished
+is served to clients, so they won't be able to access unpublished
 recordings.
 
 Serving recordings to users
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------
 
-To allow your users to actually watch those recordings, you need to
-serve the ``{PATH_DATA}/recordings/public/`` directory as
-``https://{PLAYBACK_DOMAIN}/playback/``. BBBLB can also serve those
-files, but it is usually way more efficient to let a front-end web
-server (e.g. nginx or caddy) serve those files directly. Remember to
-only serve the ``public`` directory, the ``storage`` directory should be
-private. The webserver still needs to be able to access both, or it
-won’t be able to follow symlinks pointing from one to the other.
+See :ref:`serving-recordings`.
 
-The ``presentation`` format is special. It needs a player that is not
-part of the recroding and must be served separately from the
-``https://{PLAYBACK_DOMAIN}/playback/presentation/2.3/`` URL. This
-player also assumes the recording data files to be served under
-``/presentation/{record_id}/*`` instead of the standard
-``/playback/presentation/{record_id}/*`` path.
+Migrate old recordings
+----------------------
 
-There are two ways to tackle this: You can either build and serve your
-own copy of
-`bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__ and set
-``REACT_APP_MEDIA_ROOT_URL=/playback/presentation/`` during build, or
-you could forward all requests to the player path to one (or all) of
-your BBB back-end servers. The second route is less of a hassle, but
-requires you to add a redirect from ``/presentation/*`` to
-``/playback/presentation/*`` so the pre-built player can find the
-recording files.
+See :ref:`migrate-recordings`
 
-Long story short:
+Error Recovery
+--------------
 
--  Serve ``/playback/*`` from ``{PATH_DATA}/recordings/public/``. Make
-   sure the webserver can follow relative symlinks to
-   ``{PATH_DATA}/recordings/storage/``, but **do not serve the storage
-   directory** to clients.
--  Serve ``/playback/presentation/2.3/*`` from a real BBB server, or a
-   folder that contains a build version of the
-   `bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__
-   package.
--  If needed by the presentation player, serve ``/presentation/*`` from
-   ``{PATH_DATA}/recordings/public/presentation/`` or add a redirect
-   from ``/presentation/*`` to ``/playback/presentation/*``.
-
-Examples for different web servers can be found in the ``./examples/``.
-
-Maintenance
------------
-
-How to fix a failed import
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Retry a failed import
+~~~~~~~~~~~~~~~~~~~~~
 
 Failed imports will be moved to the ``{PATH_DATA}/recordings/failed/``
 directory. This does not mean that they failed completely, *some* of the
 contained recordings may have been successfully imported. Check the logs
 and try to fix the issue, then upload the (fixed) recording again.
 
-How to recover from a crash?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Recover from a crash
+~~~~~~~~~~~~~~~~~~~~
 
 The importer will pick up all tasks from the
 ``{PATH_DATA}/recordings/inbox/`` directory on startup, so even after a
@@ -144,27 +101,6 @@ these steps:
    directories as well
 -  as your logs. Your inbox should clear quickly.
 
-How to migrate old recordings?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If you have old meetings from a different system that do not have tenant
-information, upload them via the API as the admin user, but set the
-``tenant`` query parameter. This tells BBBLB to ignore any recording
-metadata and associate the recording with the given tenant.
-
-If you want to migrate recordings from one tenant to another, you have
-to follow three steps:
-
-First, create a tar-archive from the original recording found in the
-``./storage/`` directory, then delete the recording via the API, then
-upload the tar-archives again and set the ``tenant`` parameter during
-upload. Note that the new recording will be ``unpublished`` by default.
-TODO: We might provide an API or commandline tool to help with that
-use-case in the future.
-
-If you changed the ``DOMAIN`` ir ``PLAYBACK_DOMAIN`` settings in BBBLB,
-you do not have do do anything. The API will translate all URLs found in
-the original ``metadata.xml`` files automatically.
 
 Internals
 ---------

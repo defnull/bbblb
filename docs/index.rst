@@ -64,7 +64,7 @@ Documentation
 .. toctree::
    :maxdepth: 3
 
-   deploy.rst
+   install.rst
    config.rst
    admin.rst
    api.rst

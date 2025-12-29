@@ -1,12 +1,12 @@
-======================
-Cluster Administration
-======================
+==============
+Administration
+==============
 
-Before we can actually start our first meeting, we need to add *Tenants* and *Servers* to our cluster. This can be fully automated via the :doc:`API <api>` but for now, we will use the ``bbbctl`` admin command line tool instead.
+Before we can actually start our first meeting, we need to add *Tenants* and *Servers* to our cluster. This can be fully automated via the :doc:`API <api>` but for now, we will use the ``bbblb`` admin command line tool instead.
 
 .. note::
 
-    If you followed the :doc:`docker compose based deployment <deploy>`, you can use the ``bbbctl.sh`` wrapper to tun ``bbbctl`` inside the container.
+    If you followed the :doc:`docker compose based deployment <install>`, you can use the ``bbblb.sh`` wrapper to tun ``bbblb`` inside the container.
 
 Manage Tenants
 ==============
@@ -28,28 +28,29 @@ Replace ``SECRET`` with a suitable tenant secret, ``example`` with a short but m
 
 In this example we associate the ‘example’ tenant with the primary domain. To add more tenants, associate each one with a unique domain or subdomain as their realm, so they can be told apart.
 
-Override create parameters
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Override create or join parameters
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The BBB API for creating new meetings accepts a ton of parameters and allows front-ends to control the featureset and many other aspects of a meeting. You can enforce or extend those parameters for each tenant using overrides::
+The BBB APIs for creating or joining meetings accept a ton of parameters and allow front-ends to control features and other aspects on a per-meeting or per-user level. You can enforce or extend those parameters for each tenant using overrides::
 
-    Usage: bbblb tenant override [OPTIONS] TENANT NAME=VALUE
+    bbblb override set TENANT create NAME=VALUE
+    bbblb override set TENANT join NAME=VALUE
 
-You can define any number of create parameter overrides per tenant as ``PARAM=VALUE`` pairs. ``PARAM`` should match a BBB create call API parameter and the given ``VALUE`` will be enforced on all future create-calls issued by this tenant. If ``VALUE`` is empty, then the parameter will be removed from create-calls.
+You can define any number of create or join parameter overrides per tenant as ``PARAM=VALUE`` pairs. ``PARAM`` should match an API parameter you want to override, and the given ``VALUE`` will be enforced on all future create or join calls issued by this tenant. If ``VALUE`` is empty, then the parameter will be removed from future API calls.
 
-Instead of the ``=`` operator you can also use ``?`` to define a fallback, ``<`` to define a maximum value for numeric parameters (e.g. *duration*, *maxParticipants*), or ``+`` to add items to a comma separated list parameter (e.g. *disabledFeatures*).
+Instead of the ``=`` operator you can also use ``?`` to define a default value instead of an override, ``<`` to define a maximum value for numeric parameters (e.g. *duration*, *maxParticipants*), or ``+`` to add items to a comma separated list parameter (e.g. *disabledFeatures*).
 
 Examples::
 
     # Limit the 'free' tenant to 100 participants and 90 minutes
     # per meeting, and prevent recordings
-    bbblb tenant override free "duration<90" "maxParticipants<100" "record="
+    bbblb override free create "duration<90" "maxParticipants<100" "record="
 
     # Set a different default presentation for the 'moodle' tenant
-    bbblb tenant override moodle "preUploadedPresentation?https://dl.example.com/school1.pdf"
+    bbblb override moodle create "preUploadedPresentation?https://dl.example.com/school1.pdf"
 
     # Disable chat for the 'interview' tenant
-    bbblb tenant override interview "disabledFeatures+chat" "disabledFeaturesExclude="
+    bbblb override interview create "disabledFeatures+chat" "disabledFeaturesExclude="
 
 Manage Servers
 ==============
@@ -62,8 +63,8 @@ Adding new Servers
 Let's assume you already have some BBB servers up and running. 
 
 .. attention::
-    
-    Make sure to install the ``./examples/post_publish_bbblb.rb`` script on BBB servers *before* attaching them to your cluster, or recordings won’t be transferred.
+
+    Make sure to install the ``./examples/post_publish_bbblb.rb`` script on BBB servers *before* using them in your cluster, or recordings won’t be transferred.
 
 To attach your first BBB server, run:
 
@@ -77,10 +78,25 @@ It may take up to 50 seconds (5 times the poll interval default) until the serve
 
 That’s it. Your ‘example’ tenant should now be able to start and manage meetings in your cluster via BBBLB.
 
+Manage Recordings
+=================
+
+TODO
+
+.. _migrate-recordings:
+
 Import old Recordings
 ~~~~~~~~~~~~~~~~~~~~~
 
-TODO
+You can import existing recordings and assign them to a tenant with the `bbblb` CLI::
+
+    Usage: bbblb recording import --tenant TENANT FILE
+
+The `FILE` parameter should point to a `.tar` or `.tgz` archive containing the recording data. If missing or `-`, the command will read from standard input, which is most usefull when BBBLB runs within a container that amy not see the files you want to import::
+
+    tar -c /path/to/presentation/ | bbblb recording import --tenant mytenant -
+
+The tar file can actually contain multiple recordings. Every directory with a `metadata.xml` will be imported.
 
 Sync Cluster State
 ===============================
@@ -94,14 +110,14 @@ This can be used for backup, but also to *sync* the cluster state with a JSON st
 .. code:: bash
 
     # Export state to cluster.json
-    bbbctl state export > cluster.json
+    bbblb state export > cluster.json
     
     # TODO: Modify or generate cluster.json with your own tooling
 
     # Check what would need do change so the sate matches cluster.json
-    bbbctl state import --dry-run < cluster.json
+    bbblb state import --dry-run < cluster.json
     # Actually change the cluster state to match cluster.json
-    bbbctl state import --delete --nuke < cluster.json
+    bbblb state import --delete --nuke < cluster.json
 
 
 By default, servers and tenants not present in the input file will only be disabled and not removed.
@@ -118,6 +134,7 @@ The export file format is stable and backwards compatible within major releases 
 .. code:: json
 
     {
+        "v": 1,
         "servers": {
             "bbb01.example.com": {
                 "enabled": true
@@ -130,12 +147,15 @@ The export file format is stable and backwards compatible within major releases 
                 "secret": "superdupersecret",
                 "realm": "bbblb.example.com",
                 "overrides": {
-                    "maxParticipants": "<100"
+                    "create": {
+                        "maxParticipants": "<100"
+                    }
                 }
             }
         }
     }
 
+The state file format is versioned, and BBBLB can usually import old versions just fine. It will always generate the most recent version, though.
 
 Automate with Ansible
 ~~~~~~~~~~~~~~~~~~~~~
@@ -162,7 +182,8 @@ Here is an example ansible playbook that shows how this could look like (unteste
               secret: superdupersecret
               realm: bbblb.example.com
               overrides:
-                maxParticipants: "<100"
+                create:
+                  maxParticipants: "<100"
       tasks:
         - name: Sync cluster state
           ansible.builtin.command:
