@@ -73,6 +73,11 @@ async def format_redirect_app(format, scope, receive, send):
 def make_routes(config: BBBLBConfig):
     from bbblb.web import bbbapi, bbblbapi
 
+    playback_dir = config.PATH_DATA / "recordings" / "public"
+    playback_dir.mkdir(parents=True, exist_ok=True)
+    static_dir = config.PATH_DATA / "htdocs"
+    static_dir.mkdir(parents=True, exist_ok=True)
+
     return [
         Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
         Mount("/bbblb/api", routes=bbblbapi.api_routes),
@@ -80,7 +85,7 @@ def make_routes(config: BBBLBConfig):
         Mount(
             "/playback",
             app=StaticFiles(
-                directory=config.PATH_DATA / "recordings" / "public",
+                directory=playback_dir,
                 check_dir=False,
                 follow_symlink=True,
             ),
@@ -93,6 +98,19 @@ def make_routes(config: BBBLBConfig):
             Mount(f"/{format}", app=partial(format_redirect_app, format))
             for format in PLAYBACK_FROM_ROOT_FORMATS
         ],
+        # Serve static files from the {PATH_DATA}/htdocs/ folder, or fall back to
+        # files shipped with BBBLB. This is just for convenience, BBBLB itself
+        # does not need any static files.
+        Mount(
+            "/",
+            app=StaticFiles(
+                directory=static_dir,
+                packages=[(f"{__package__}", "static")],
+                follow_symlink=True,
+                html=True,
+            ),
+            name="static",
+        ),
     ]
 
 
