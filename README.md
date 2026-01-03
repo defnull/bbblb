@@ -19,6 +19,33 @@ Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/`
 * **Management API:** BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
 * **Easy to deploy:** At least easier than most other BigBlueButton Load Balancer implementations.
 
+## Architecture
+
+BBBLB acts as a central API gateway, intelligently routing API requests and distributing meetings across a scaleable pool of BigBlueButton instances.
+
+```mermaid
+---
+config:
+  look: handDrawn
+  theme: neutral
+---
+graph TD
+    Clients("Clients / Apps
+    e.g. Moodle")
+    BBBLB["BBBLB (Loadbalancer)"]
+    
+    subgraph Cluster [BBB Server Pool]
+        BBB1[BBB Server 1]
+        BBB2[BBB Server 2]
+        BBBN[BBB Server N]
+    end
+
+    %% Define Flow
+    Clients -->|BBB API| BBBLB
+    BBBLB -->|BBB API| BBB1
+    BBBLB -->|BBB API| BBB2
+    BBBLB -->|BBB API| BBBN
+```
 
 # Contributing
 
