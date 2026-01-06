@@ -49,17 +49,20 @@ class NamedLock:
                         model.Lock.name == self.name, model.Lock.ts < expire
                     )
                 )
+
+            result = await conn.execute(
+                model.upsert(conn, model.Lock)
+                .values(name=self.name, owner=PROCESS_IDENTITY)
+                .on_conflict_do_nothing(index_elements=["name"])
+            )
+            if result.rowcount == 0:
+                return False
+
             try:
-                await conn.execute(
-                    model.insert(model.Lock).values(
-                        name=self.name, owner=PROCESS_IDENTITY
-                    )
-                )
                 await conn.commit()
                 LOG.debug(f"Lock {self.name!r} acquired by {PROCESS_IDENTITY}")
                 return True
-            except model.IntegrityError:
-                await conn.rollback()
+            except model.OperationalError:
                 return False
 
     async def check(self):

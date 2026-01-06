@@ -87,6 +87,13 @@ async def get_or_create(
         return (await session.execute(select)).scalar_one(), False
 
 
+def upsert(conn: AsyncConnection, model: "type[Base]"):
+    if conn.dialect.name == "sqlite":
+        return sqlite_upsert(model)
+    else:
+        return postgres_upsert(model)
+
+
 class NewlineSeparatedList(TypeDecorator):
     impl = Text
     cache_ok = True
@@ -157,13 +164,6 @@ class ORMMixin:
         return (
             await session.execute(cls.select(*a, **filter).limit(1))
         ).scalar_one_or_none()
-
-    @classmethod
-    def upsert(cls, conn: AsyncConnection):
-        if conn.dialect.name == "sqlite":
-            return sqlite_upsert(cls)
-        else:
-            return postgres_upsert(cls)
 
 
 class Base(ORMMixin, AsyncAttrs, DeclarativeBase):
