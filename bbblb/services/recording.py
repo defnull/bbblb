@@ -195,21 +195,17 @@ class RecordingManager(BackgroundService):
     async def run(self):
         try:
             while True:
-                try:
-                    await asyncio.sleep(self.poll_interval)
-                    await self.lock.try_run_locked(self.run_locked)
-                except asyncio.CancelledError:
-                    raise
-                except BaseException:
-                    LOG.exception("Unhandled recording import error")
-                    continue
+                await asyncio.sleep(self.poll_interval + random.random())
+                await self.lock.try_run_locked(self.run_locked)
         finally:
             await self.close()
 
     async def run_locked(self):
-        if self.auto_import:
-            await self.schedule_waiting()
-        await self.cleanup()
+        while await self.lock.check():
+            if self.auto_import:
+                await self.schedule_waiting()
+            await self.cleanup()
+            await asyncio.sleep(self.poll_interval)
 
     async def schedule_waiting(self):
         """Pick up waiting tasks from inbox"""
