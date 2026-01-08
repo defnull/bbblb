@@ -46,7 +46,9 @@ def upgrade() -> None:
     res = conn.execute(sa.text("SELECT id, overrides FROM tenants"))
     bulk = []
     for tenant_id, override_json in res.fetchall():
-        for param, value in json.loads(override_json).items():
+        if not isinstance(override_json, dict):
+            override_json = json.loads(override_json)
+        for param, value in override_json.items():
             flag, value = value[0], value[1:]
             if flag not in "?=<+":
                 flag = "?"
