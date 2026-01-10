@@ -97,8 +97,10 @@ class MeetingPoller(BackgroundService):
             server = (
                 await session.execute(model.Server.select(id=server_id))
             ).scalar_one()
-            meetings = await server.awaitable_attrs.meetings
-            meetings = {meeting.internal_id: meeting for meeting in meetings}
+            meetings: dict[str, model.Meeting] = {
+                meeting.internal_id: meeting
+                for meeting in await server.awaitable_attrs.meetings
+            }
 
         if not server.enabled:
             if not meetings:
@@ -153,20 +155,24 @@ class MeetingPoller(BackgroundService):
 
         async with self.db.session() as session:
             # Forget meetings not found on server
-            forget_ids = set(
-                meeting.internal_id
+            forget_ids = list(
+                meeting.id
                 for meeting in meetings.values()
                 if meeting.internal_id not in running_ids
             )
             if forget_ids:
                 LOG.debug(
-                    f"{len(forget_ids)} meetings not found on server, ending them all"
+                    f"{len(forget_ids)} meetings not found on server, forgetting them all"
                 )
-                await session.execute(
-                    model.delete(model.Meeting).where(
-                        model.Meeting.internal_id.in_(forget_ids)
+                chunk_size = 100
+                for offset in range(0, len(forget_ids), chunk_size):
+                    await session.execute(
+                        model.delete(model.Meeting).where(
+                            model.Meeting.id.in_(
+                                forget_ids[offset : offset + chunk_size]
+                            )
+                        )
                     )
-                )
 
             # Re-fetch server from DB so we can update load and state values
             server = (
