@@ -122,7 +122,7 @@ async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
                 click.echo("No meetings left on server")
                 return
 
-            if time.time() + interval < maxwait:
+            if time.time() + interval > maxwait:
                 raise RuntimeError(
                     f"Server not empty: There are still {count} meetings running"
                 )
