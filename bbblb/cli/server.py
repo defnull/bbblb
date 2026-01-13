@@ -151,12 +151,25 @@ async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
 
 @server.command()
 @async_command()
-async def list(obj: ServiceRegistry, with_secrets=False):
+async def list(obj: ServiceRegistry):
     """List all servers with their secrets."""
     db = await obj.use(DBContext)
 
     async with db.session() as session:
-        servers = (await session.execute(model.Server.select())).scalars()
-        for server in servers:
+        stmt = model.Server.select().order_by(model.Server.domain)
+        for server in (await session.execute(stmt)).scalars():
             out = f"{server.domain} {server.secret}"
+            click.echo(out)
+
+
+@server.command()
+@async_command()
+async def stats(obj: ServiceRegistry):
+    """Show server statistics (state, health, load)."""
+    db = await obj.use(DBContext)
+
+    async with db.session() as session:
+        stmt = model.Server.select().order_by(model.Server.domain)
+        for server in (await session.execute(stmt)).scalars():
+            out = f"{server.domain} enabled={server.enabled} health={server.health.name.lower()} load={server.load:.1f}"
             click.echo(out)

@@ -304,6 +304,7 @@ Manage servers
   enable   Enable a server and make it available for new meetings. 
   disable  Disable a server, so now new meetings are created on it.
   list     List all servers with their secrets.                    
+  stats    Show server statistics (state, health, load).           
   =======  ========================================================
 
 server create
@@ -364,6 +365,13 @@ server list
 ``Usage: bbblb server list [OPTIONS]``
 
 List all servers with their secrets.
+
+server stats
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb server stats [OPTIONS]``
+
+Show server statistics (state, health, load).
 
 state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
