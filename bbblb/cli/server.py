@@ -80,7 +80,7 @@ async def enable(obj: ServiceRegistry, domain: str):
 )
 @async_command()
 async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
-    """Disable a server, so now new meetings are created on it."""
+    """Disable a server and wait for meetings to end."""
     db = await obj.use(DBContext)
 
     async with db.session() as session:
@@ -132,6 +132,33 @@ async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
 
             last_count = count
             await asyncio.sleep(interval)
+
+
+@server.command("delete")
+@click.argument("domain")
+@async_command()
+async def _delete(obj: ServiceRegistry, domain: str):
+    """Remove an empty server from the server list."""
+    db = await obj.use(DBContext)
+    async with db.session() as session:
+        server = (
+            await session.execute(model.Server.select(domain=domain))
+        ).scalar_one_or_none()
+        if not server:
+            click.echo(f"Server {domain!r} not found")
+            return
+        if server.enabled:
+            click.echo(f"Server {domain!r} not disabled")
+        stmt = (
+            model.Meeting.select(model.Meeting.server == server)
+            .with_only_columns(func.count())
+            .order_by(None)
+        )
+        if (await session.execute(stmt)).scalar() or 0 > 0:
+            click.echo(f"Server {domain!r} not empty")
+            return
+        await session.delete(server)
+    click.echo(f"Server {domain!r} removed")
 
 
 async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):

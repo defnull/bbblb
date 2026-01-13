@@ -297,15 +297,16 @@ Manage servers
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  ========================================================
-  Command  Help                                                    
-  =======  ========================================================
-  create   Create a new server or update a server secret.          
-  enable   Enable a server and make it available for new meetings. 
-  disable  Disable a server, so now new meetings are created on it.
-  list     List all servers with their secrets.                    
-  stats    Show server statistics (state, health, load).           
-  =======  ========================================================
+  =======  =======================================================
+  Command  Help                                                   
+  =======  =======================================================
+  create   Create a new server or update a server secret.         
+  enable   Enable a server and make it available for new meetings.
+  disable  Disable a server and wait for meetings to end.         
+  delete   Remove an empty server from the server list.           
+  list     List all servers with their secrets.                   
+  stats    Show server statistics (state, health, load).          
+  =======  =======================================================
 
 server create
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -346,7 +347,7 @@ server disable
 
 ``Usage: bbblb server disable [OPTIONS] DOMAIN``
 
-Disable a server, so now new meetings are created on it.
+Disable a server and wait for meetings to end.
 
 .. table:: Options
   :width: 100%
@@ -358,6 +359,22 @@ Disable a server, so now new meetings are created on it.
   --nuke          End all meetings on this server.                                                             
   --wait INTEGER  Wait for this many seconds for all meetings to end. A value of -1 waits forever  [default: 0]
   ==============  =============================================================================================
+
+server delete
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``Usage: bbblb server delete [OPTIONS] DOMAIN``
+
+Remove an empty server from the server list.
+
+.. table:: Options
+  :width: 100%
+
+  ======  =================
+  Option  Help             
+  ======  =================
+  DOMAIN  Required argument
+  ======  =================
 
 server list
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
