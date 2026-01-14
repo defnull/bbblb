@@ -1,8 +1,9 @@
 # BBBLB: BigBlueButton Load Balancer
 
-BBBLB (BigBlueButton Load Balancer) is yet another *smart* load balancer for [BigBlueButton](https://bigbluebutton.org/). It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
+BBBLB (BigBlueButton Load Balancer) is yet another load balancer for [BigBlueButton](https://bigbluebutton.org/). It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
 
-> :warning: BBBLB is currently in a **pre-alpha state**. It is a somewhat working prototype and **not ready for production** at this time. **APIs are not stable** and will change. There will be bugs. You have been warned.
+> :warning: BBBLB is not ready for production just yet unless you know how to fix bugs yourself. It works well enough, but APIs and features are not stable yet and upgrades may break things. If you are looking for a reliable solution that *just works*, better wait for the 1.0 release.
+   
 
 
 ## Documentation
