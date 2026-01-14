@@ -2,10 +2,13 @@ import asyncio
 import functools
 import importlib
 import pkgutil
+import typing
 from bbblb.services import bootstrap
 from bbblb.settings import ConfigError, BBBLBConfig
 import click
 import os
+import tabulate
+import json
 
 
 def async_command():
@@ -47,6 +50,55 @@ class MultiChoice(click.ParamType):
         info_dict = super().to_info_dict()
         info_dict["choices"] = self.choices
         return info_dict
+
+
+class Table:
+    formats = ["simple", "plain", "raw", "json"]
+    option = click.option(
+        "--table-format",
+        type=click.Choice(formats),
+        default=formats[0],
+        help="Change the result table format.",
+    )
+
+    def __init__(self):
+        self._rows: list[list[typing.Any]] = []
+        self._headers = {}
+
+    def headers(self, **headers):
+        """Map column names to human readable labels"""
+        self._headers.update(headers)
+
+    def row(self, **values):
+        """Add a row to the table, pamming column names ot values.
+
+        Missing columns are stored as `None`. Previously unknown columns
+        are added to the table.
+        """
+        for key in values:
+            if key not in self._headers:
+                self._headers[key] = key.title()
+                for row in self._rows:
+                    row.append(None)
+        self._rows.append([values.get(column, None) for column in self._headers])
+
+    def print(self, format="simple"):
+        if format == "json":
+            keys = list(self._headers)
+            for row in self._rows:
+                click.echo(json.dumps(dict(zip(keys, row))))
+        elif format == "raw":
+            for row in self._rows:
+                click.echo("\t".join(map(str, row)))
+        else:
+            click.echo(
+                tabulate.tabulate(
+                    self._rows,
+                    list(self._headers.values()),
+                    tablefmt=format,
+                    floatfmt=".2f",
+                )
+            )
 
 
 @click.group(

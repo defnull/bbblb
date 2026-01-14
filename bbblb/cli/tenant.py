@@ -7,7 +7,7 @@ import click
 
 from bbblb.settings import BBBLBConfig
 
-from . import main, async_command
+from . import Table, main, async_command
 
 
 @main.group()
@@ -101,12 +101,19 @@ async def disable(obj: ServiceRegistry, name: str, nuke: bool):
 
 
 @tenant.command("list")
+@Table.option
 @async_command()
-async def list_(obj: ServiceRegistry):
+async def list_(obj: ServiceRegistry, table_format: str):
     """List all tenants with their realms and secrets."""
     db = await obj.use(DBContext)
+    tbl = Table()
     async with db.session() as session:
         tenants = (await session.execute(model.Tenant.select())).scalars()
         for tenant in tenants:
-            out = f"{tenant.name} {tenant.realm} {tenant.secret}"
-            click.echo(out)
+            tbl.row(
+                tenant=tenant.name,
+                realm=tenant.realm,
+                enabled=tenant.enabled,
+                secret=tenant.secret,
+            )
+    tbl.print(format=table_format)

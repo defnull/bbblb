@@ -9,7 +9,7 @@ from bbblb.services import ServiceRegistry
 from bbblb.services.bbb import BBBHelper
 from bbblb.services.db import DBContext
 
-from . import main, async_command
+from . import Table, main, async_command
 
 
 @main.group()
@@ -177,26 +177,39 @@ async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
 
 
 @server.command()
+@Table.option
 @async_command()
-async def list(obj: ServiceRegistry):
+async def list(obj: ServiceRegistry, table_format: str):
     """List all servers with their secrets."""
     db = await obj.use(DBContext)
 
+    tbl = Table()
     async with db.session() as session:
         stmt = model.Server.select().order_by(model.Server.domain)
         for server in (await session.execute(stmt)).scalars():
-            out = f"{server.domain} {server.secret}"
-            click.echo(out)
+            tbl.row(server=server.domain, secret=server.secret)
+    tbl.print(format=table_format)
 
 
 @server.command()
+@Table.option
 @async_command()
-async def stats(obj: ServiceRegistry):
+async def stats(obj: ServiceRegistry, table_format):
     """Show server statistics (state, health, load)."""
     db = await obj.use(DBContext)
 
+    tbl = Table()
     async with db.session() as session:
         stmt = model.Server.select().order_by(model.Server.domain)
         for server in (await session.execute(stmt)).scalars():
-            out = f"{server.domain} enabled={server.enabled} health={server.health.name.lower()} load={server.load:.1f}"
-            click.echo(out)
+            tbl.row(
+                server=server.domain,
+                enabled=server.enabled,
+                state=server.health.name.lower(),
+                meetings=server.stats.get("meetings", 0),
+                users=server.stats.get("users", 0),
+                voice=server.stats.get("voice", 0),
+                video=server.stats.get("video", 0),
+                load=server.load,
+            )
+    tbl.print(format=table_format)

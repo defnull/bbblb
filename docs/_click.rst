@@ -383,12 +383,30 @@ server list
 
 List all servers with their secrets.
 
+.. table:: Options
+  :width: 100%
+
+  ======================================  ==================================================
+  Option                                  Help                                              
+  ======================================  ==================================================
+  --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
+  ======================================  ==================================================
+
 server stats
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``Usage: bbblb server stats [OPTIONS]``
 
 Show server statistics (state, health, load).
+
+.. table:: Options
+  :width: 100%
+
+  ======================================  ==================================================
+  Option                                  Help                                              
+  ======================================  ==================================================
+  --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
+  ======================================  ==================================================
 
 state
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -528,4 +546,13 @@ tenant list
 ``Usage: bbblb tenant list [OPTIONS]``
 
 List all tenants with their realms and secrets.
+
+.. table:: Options
+  :width: 100%
+
+  ======================================  ==================================================
+  Option                                  Help                                              
+  ======================================  ==================================================
+  --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
+  ======================================  ==================================================
 
