@@ -22,6 +22,7 @@ from sqlalchemy import (
     delete,  # noqa: F401
     update,  # noqa: F401
     insert,  # noqa: F401
+    func,  # noqa: F401
 )
 from sqlalchemy.ext.asyncio import AsyncAttrs, AsyncSession, AsyncConnection
 
@@ -317,6 +318,7 @@ class Server(Base):
     recover: Mapped[int] = mapped_column(nullable=False, default=0)
 
     load: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    stats: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default={})
 
     meetings: Mapped[list["Meeting"]] = relationship(
         back_populates="server", cascade="all, delete-orphan"

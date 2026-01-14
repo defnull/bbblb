@@ -183,6 +183,12 @@ class MeetingPoller(BackgroundService):
 
             if success:
                 server.load = stats.load
+                server.stats = {
+                    "meetings": stats.meetings,
+                    "users": stats.users,
+                    "voice": stats.voice,
+                    "video": stats.video,
+                }
                 server.mark_success(self.minsuccess)
             else:
                 server.mark_error(self.maxerror)
