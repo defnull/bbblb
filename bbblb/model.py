@@ -332,7 +332,7 @@ class Server(Base):
 
     @classmethod
     def select_best(cls, tenant: Tenant):
-        return cls.select_available(tenant).order_by(Server.load.desc()).limit(1)
+        return cls.select_available(tenant).order_by(Server.load).limit(1)
 
     def increment_load_stmt(self, load: float):
         return (
