@@ -17,7 +17,7 @@ In this document we will focus on the **Docker Compose** based deployment approa
 Docker Compose
 ==============
 
-We strongly recommend to deploy BBBLB as a `docker compose <https://docs.docker.com/compose/>`_ project. All necessary services (`Postgres <hhttps://www.postgresql.org/>`_ and `Caddy <https://caddyserver.com/docs/install#docker>`_) run in containers alongside BBBLB on the same host. The operating system of the host is completely irrelevant, as long as it can run docker and linux containers. 
+We strongly recommend to deploy BBBLB as a `docker compose <https://docs.docker.com/compose/>`_ project. All necessary services (`Postgres <hhttps://www.postgresql.org/>`_ and `Caddy <https://caddyserver.com/docs/install#docker>`_) run in containers alongside BBBLB on the same host. The operating system of the host does not matter, as long as it can run docker and linux containers. 
 
 Prerequisites
 -------------
@@ -74,9 +74,9 @@ If you followed all the previous steps, the only thing left to do is to start ev
 
     docker compose up --build --pull always -d
 
-This command starts all services defined in ``docker-compose.yml`` in the background (`-d``). To check if everything runs fine, run ``docker compose ps``. To check the logs and and follow (`-f`) them in real-time, run ``docker compose logs -f``. 
+This command starts all services defined in ``docker-compose.yml`` in the background (``-d``). To check if everything runs fine, run ``docker compose ps``. To check the logs and and follow (`-f`) them in real-time, run ``docker compose logs -f``. 
 
-Since all containers are configured with ``restart: unless-stopped`` they will start automatically after a server reboot and restart after errors or crashes.
+Since all containers are configured with ``restart: unless-stopped`` they will restart automatically after a reboot or crash.
 
 To stop all running containers, run ``docker compose stop``. To completely reset everything and remove all docker containers and networks, run ``docker compose down``. Don’t worry, all your data lives in the ``./data/`` directory and will not be removed by docker. You can later start everything again if you need to.
 
