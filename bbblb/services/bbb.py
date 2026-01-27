@@ -34,7 +34,7 @@ class BBBHelper(BackgroundService):
     async def run(self):
         while True:
             await self._cleanup_recordings()
-            await asyncio.sleep(60)
+            await asyncio.sleep(600)
 
     async def _cleanup_recordings(self):
         """Callbacks need to be kept in DB for some time because we never know when
@@ -42,7 +42,7 @@ class BBBHelper(BackgroundService):
         recording rebuild). Here we make sure they are cleaned up eventually.
         """
 
-        max_age = datetime.timedelta(days=7)
+        max_age = datetime.timedelta(days=30)
         async with self.db.connect() as conn:
             stmt = model.Callback.delete(
                 model.Callback.created < (model.utcnow() - max_age)
