@@ -10,7 +10,7 @@ LOG = logging.getLogger(__name__)
 
 
 class AnalyticsHandler(ManagedService):
-    """Store analytics data to {PATH_DATA}/{tenant}/{meetingID}.json"""
+    """Store analytics callback data to {PATH_DATA}/analytics/{tenant}/{meetingID}.json"""
 
     def __init__(self, config: BBBLBConfig):
         self.store_path = (config.PATH_DATA / "analytics").resolve()
