@@ -34,7 +34,10 @@ class HealthService(BackgroundService):
                         msg = f"Internal error in health check: {exc}"
                     name = obj.__class__.__qualname__
                     self.checks[name] = (status, msg)
-                    LOG.debug(f"[{name}] {status.name} {msg}")
+                    if status == Health.OK:
+                        LOG.debug(f"[{name}] {status.name} {msg}")
+                    else:
+                        LOG.warning(f"[{name}] {status.name} {msg}")
             except asyncio.CancelledError:
                 self.checks.clear()
                 raise
