@@ -207,6 +207,7 @@ async def stats(obj: ServiceRegistry, table_format):
                 enabled=server.enabled,
                 state=server.health.name.lower(),
                 meetings=server.stats.get("meetings", 0),
+                largest=server.stats.get("largest", 0),
                 users=server.stats.get("users", 0),
                 voice=server.stats.get("voice", 0),
                 video=server.stats.get("video", 0),

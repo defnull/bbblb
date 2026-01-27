@@ -188,6 +188,7 @@ class MeetingPoller(BackgroundService):
                     "users": stats.users,
                     "voice": stats.voice,
                     "video": stats.video,
+                    "largest": stats.largest,
                 }
                 server.mark_success(self.minsuccess)
             else:
