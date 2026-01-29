@@ -37,7 +37,7 @@ from sqlalchemy.orm import (
 )
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
-from sqlalchemy.dialects.postgresql import insert as postgres_upsert
+from sqlalchemy.dialects.postgresql import insert as postgres_upsert, JSONB
 
 from sqlalchemy.exc import (
     NoResultFound,  # noqa: F401
@@ -51,6 +51,10 @@ LOG = logging.getLogger(__name__)
 
 P = typing.ParamSpec("P")
 R = typing.TypeVar("R")
+
+# We need JSONB on postgres because SELECT DISTINCT does not work on
+# JSON columns, breaking 1:1 joins in sqlalchemy.
+AUTOJSON = JSON().with_variant(JSONB(), "postgresql")
 
 
 def utcnow():
@@ -318,7 +322,9 @@ class Server(Base):
     recover: Mapped[int] = mapped_column(nullable=False, default=0)
 
     load: Mapped[float] = mapped_column(nullable=False, default=0.0)
-    stats: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default={})
+    stats: Mapped[dict[str, float]] = mapped_column(
+        AUTOJSON, nullable=False, default={}
+    )
 
     meetings: Mapped[list["Meeting"]] = relationship(
         back_populates="server", cascade="all, delete-orphan"
@@ -450,7 +456,7 @@ class Recording(Base):
     external_id: Mapped[str] = mapped_column(nullable=False)
     state: Mapped[RecordingState] = mapped_column(nullable=False)
 
-    meta: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default={})
+    meta: Mapped[dict[str, str]] = mapped_column(AUTOJSON, nullable=False, default={})
     formats: Mapped[list["PlaybackFormat"]] = relationship(
         back_populates="recording", cascade="all, delete-orphan", passive_deletes=True
     )
