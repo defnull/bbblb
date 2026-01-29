@@ -76,7 +76,6 @@ class BaseConfig:
                 key = key.strip()
                 if key.startswith(remove_prefix):
                     key = key[len(remove_prefix) :]
-                key = key.strip()
                 val = " ".join(shlex.split(val.strip()))
                 if not (key and val):
                     continue
