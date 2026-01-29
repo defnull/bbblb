@@ -8,7 +8,7 @@ import aiohttp
 import lxml.etree
 import lxml.builder  # type: ignore
 
-from urllib.parse import parse_qsl, urlencode, urljoin
+from urllib.parse import unquote_plus, urlencode, urljoin
 
 import yarl
 
@@ -213,25 +213,37 @@ def verify_checksum_query(
     """Verify a checksum protected query string against a list of secrets.
     Returns the parsed query without the checksum, and the secret. Raises
     an appropriate BBBError if verification fails."""
-    cleaned: list[tuple[str, str]] = []
+
+    parsed: dict[str, str] = {}
+    cleaned: list[str] = []
     checksum = None
-    for key, value in parse_qsl(query, keep_blank_values=True):
-        if key == "checksum":
+    for part in query.split("&"):
+        name, eq, value = part.partition("=")
+        if name == "checksum":
             checksum = value
-        else:
-            cleaned.append((key, value))
+            continue
+        cleaned.append(part)
+        if name and eq:
+            parsed[unquote_plus(name)] = unquote_plus(value)
+
     if not checksum:
         raise make_error("checksumError", "Missing checksum parameter")
-    cfunc = len2hashfunc.get(len(checksum))
-    if not cfunc:
-        raise make_error(
-            "checksumError", "Unknown checksum algorithm or invalid checksum string"
-        )
-    expected = bytes.fromhex(checksum)
-    hash = cfunc((action + urlencode(cleaned)).encode("UTF-8"))
+
+    try:
+        hashfunc = len2hashfunc[len(checksum)]
+    except KeyError:
+        raise make_error("checksumError", "Unsupported checksum type")
+
+    try:
+        checksum = bytes.fromhex(checksum)
+    except ValueError:
+        raise make_error("checksumError", "Invalid checksum")
+
+    hash_init = hashfunc((action + "&".join(cleaned)).encode("UTF-8"))
     for secret in secrets:
-        clone = hash.copy()
-        clone.update(secret.encode("ASCII"))
-        if hmac.compare_digest(clone.digest(), expected):
-            return dict(cleaned), secret
+        hash = hash_init.copy()
+        hash.update(secret.encode("ASCII"))
+        if hmac.compare_digest(hash.digest(), checksum):
+            return parsed, secret
+
     raise make_error("checksumError", "Checksum did not pass verification")
