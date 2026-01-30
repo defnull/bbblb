@@ -20,6 +20,6 @@ def test_cli_server(runner: CliRunner):
         main, ["server", "create", "--secret", "1234", "test.example.com"]
     )
     assert result.exit_code == 0
-    result = runner.invoke(main, ["server", "list"])
+    result = runner.invoke(main, ["server", "list", "--table-format=raw"])
     assert result.exit_code == 0
-    assert result.stdout == "test.example.com 1234\n"
+    assert result.stdout == "test.example.com\t1234\n"
