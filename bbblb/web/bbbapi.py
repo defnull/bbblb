@@ -164,8 +164,6 @@ class BBBApiRequest(ApiRequestContext):
         """Read the request body in a save (limited size) way"""
         if self._body is not None:
             return self._body
-        if self.request.method != "POST":
-            raise TypeError("Expected POST request")
         body = bytearray()
         async for chunk in self.request.stream():
             body += chunk
