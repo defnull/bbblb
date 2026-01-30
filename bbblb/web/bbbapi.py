@@ -101,7 +101,6 @@ class BBBApiRequest(ApiRequestContext):
         tenant_cache = await self.services.use(TenantCache)
         realm = self.request.headers.get(self.config.TENANT_HEADER, "__NO_REALM__")
         self._tenant = await tenant_cache.get_tenant_by_realm(realm)
-        LOG.debug(f"Tenant for realm={realm!r} -> {self._tenant or 'NOT FOUND'}")
         if not self._tenant:
             raise make_error(
                 "checksumError",
