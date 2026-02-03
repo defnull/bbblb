@@ -100,14 +100,15 @@ class MeetingPoller(BackgroundService):
             meetings: dict[str, model.Meeting] = {
                 meeting.internal_id: meeting
                 for meeting in await server.awaitable_attrs.meetings
+                if meeting.internal_id
             }
 
         if not server.enabled:
             if not meetings:
                 return
-            LOG.debug(f"Disabled server {server.domain} still has meetings.")
+            LOG.debug(f"[{server.domain}] Disabled server still has meetings.")
 
-        LOG.info(f"Polling {server.api_base} (state={server.health.name})")
+        LOG.info(f"[{server.domain}] Polling... (state={server.health.name})")
         running_ids = set()
         stats = ServerStats()
         success = True
@@ -146,11 +147,13 @@ class MeetingPoller(BackgroundService):
                         # TODO: Breakout rooms may be created without our knowledge,
                         # maybe learn those?
                         continue
-                    LOG.warning(f"Meeting on server that is not in DB: {meeting_id}")
+                    LOG.warning(
+                        f"[{server.domain}] Meeting found on server that is not in DB: {meeting_id}"
+                    )
                     continue  # Ignore unknown meetings
 
         except BBBError as err:
-            LOG.warning(f"Server {server.domain} returned an error: {err}")
+            LOG.warning(f"[{server.domain}] Server returned an error: {err}")
             success = False
 
         async with self.db.session() as session:
@@ -162,7 +165,7 @@ class MeetingPoller(BackgroundService):
             )
             if forget_ids:
                 LOG.debug(
-                    f"{len(forget_ids)} meetings not found on server, forgetting them all"
+                    f"[{server.domain}] Removing {len(forget_ids)} meetings that were not found on the server"
                 )
                 chunk_size = 100
                 for offset in range(0, len(forget_ids), chunk_size):
