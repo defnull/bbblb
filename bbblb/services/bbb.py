@@ -1,4 +1,4 @@
-import datetime
+from datetime import timedelta
 import logging
 import time
 from bbblb import model
@@ -33,16 +33,17 @@ class BBBHelper(BackgroundService):
 
     async def run(self):
         while True:
-            await self._cleanup_recordings()
+            await self._cleanup_old_callbacks()
+            await self._cleanup_stale_meetings()
             await asyncio.sleep(600)
 
-    async def _cleanup_recordings(self):
-        """Callbacks need to be kept in DB for some time because we never know when
+    async def _cleanup_old_callbacks(self, max_age=timedelta(days=30)):
+        """Clean up old callbacks.
+
+        Callbacks need to be kept in DB for some time because we never know when
         they may be fired, or if they are re-fired after some time (e.g. after a
         recording rebuild). Here we make sure they are cleaned up eventually.
         """
-
-        max_age = datetime.timedelta(days=30)
         async with self.db.connect() as conn:
             stmt = model.Callback.delete(
                 model.Callback.created < (model.utcnow() - max_age)
@@ -50,6 +51,29 @@ class BBBHelper(BackgroundService):
             result = await conn.execute(stmt)
             if result.rowcount > 0:
                 LOG.debug(f"Cleaned up {result.rowcount} callback objects")
+            return result.rowcount
+
+    async def _cleanup_stale_meetings(self, max_age=timedelta(minutes=5)):
+        """Clean up stale meetings.
+
+        Stale meetings can happen when a process crashes after adding
+        the Meeting to the database, but before actually creating the
+        meeting and updating the 'internal_id' property. Those meetings
+        are not cleaned up by the meeting poller, because it only deals
+        with ended meetings that we know were running at some point.
+
+        To make sure the meeting-create call is not still in progress,
+        we wait a couple of minutes before removing a stale meeting.
+        """
+        async with self.db.connect() as conn:
+            stmt = model.delete(model.Meeting).where(
+                model.Meeting.internal_id.is_(None),
+                model.Meeting.created < model.utcnow() - max_age,
+            )
+            result = await conn.execute(stmt)
+            if result.rowcount > 0:
+                LOG.debug(f"Cleaned up {result.rowcount} stale meetings")
+            return result.rowcount
 
     def make_http_client(self) -> aiohttp.ClientSession:
         return aiohttp.ClientSession(connector=self.connector, connector_owner=False)

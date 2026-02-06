@@ -431,8 +431,6 @@ class Callback(Base):
 
     #: Original callback URL (optional)
     forward: Mapped[str] = mapped_column(nullable=True)
-
-    #: TODO: Delete very old callbacks on startup
     created: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), insert_default=utcnow, nullable=False
     )
