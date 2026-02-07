@@ -28,6 +28,11 @@ on shared hardware.
     :target: https://hub.docker.com/r/defnull/bbblb
     :alt: Container Images
 
+.. image:: https://img.shields.io/matrix/bbblb:matrix.org?logo=matrix
+   :target: https://matrix.to/#/#bbblb:matrix.org
+   :alt: Matrix room: #bbblb:matrix.org
+
+
 .. caution::
 
    BBBLB is not ready for production just yet unless you know how to fix

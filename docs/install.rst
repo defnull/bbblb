@@ -25,7 +25,7 @@ Prerequisites
 Before we begin, ensure you have `Docker <https://docs.docker.com/engine/install/>`__ installed and also the ``docker-compose-plugin`` package that comes with it. Do not use the legacy ``docker-compose`` command, but the ``docker compose`` plugin.
 
 Copy example files
----------------------
+------------------
 
 Clone the `repository <GITHUB_>`_ and copy the example project files from ``examples/bbblb-compose`` to your project directory (e.g. ``/opt/bbblb-compose``). Enter the project directory and rename ``bbblb.env.example`` to ``bbblb.env``. You can delete the cloned repository afterwards, we do not need it.
 
@@ -38,7 +38,7 @@ Clone the `repository <GITHUB_>`_ and copy the example project files from ``exam
     mv bbblb.env.example bbblb.env
 
 Inspect ``docker-compose.yml``
------------------------------
+------------------------------
 
 Open ``docker-compose.yml`` in an editor and try to understand how everything fits together.
 You will find three services:
@@ -66,7 +66,7 @@ Open ``./caddy/Caddyfile`` in an editor and change the domains Caddy should list
 If you plan to follow the `Cluster Proxy Configuration <https://docs.bigbluebutton.org/administration/cluster-proxy/>`_ steps on your BBB nodes, then you need to add a bunch of *Caddyfile* rules for every single back-end server. There may be better ways to do it, but I could not make it work without repeating those rules. If you have a lot of back-end servers and they change a lot, you may want to generate the Caddyfile with a script or template engine. You can reload the caddy configuration at runtime without downtime. 
 
 Starting or Stopping the Services
----------------------
+---------------------------------
 
 If you followed all the previous steps, the only thing left to do is to start everything up. Navigate to the directory containing the ``docker-compose.yml``, then run:
 

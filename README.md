@@ -8,7 +8,7 @@ BBBLB (BigBlueButton Load Balancer) is yet another load balancer for [BigBlueBut
 
 ## Documentation
 
-Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/` folder. This is still a work in progress. Pull requests are very welcomed!
+Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/` folder. This is still a work in progress. Pull requests are very welcomed! Maybe join the [Matrix chat](https://matrix.to/#/#bbblb:matrix.org) to help each other out.
 
 
 ## Features
