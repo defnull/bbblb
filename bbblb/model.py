@@ -46,6 +46,8 @@ from sqlalchemy.exc import (
     ProgrammingError,  # noqa: F401
 )
 
+from bbblb.utils import RE_TENANT_NAME
+
 
 LOG = logging.getLogger(__name__)
 
@@ -220,6 +222,14 @@ class Tenant(Base):
         back_populates="tenant", cascade="all, delete-orphan"
     )
     recordings: Mapped[list["Recording"]] = relationship(back_populates="tenant")
+
+    @validates("name")
+    def validate_name(self, key, value):
+        if not RE_TENANT_NAME.match(value):
+            raise ValueError(
+                f"Invalid tenant name: {value!r} (should match {RE_TENANT_NAME.pattern})."
+            )
+        return value
 
     def __str__(self):
         return f"Tenant({self.name})"
