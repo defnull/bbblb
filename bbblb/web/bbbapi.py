@@ -381,7 +381,9 @@ async def handle_create(ctx: BBBApiRequest):
 
         # Success! Update meeting info if it's a new meeting
         if meeting_created:
-            LOG.info(f"Created {meeting} on {meeting.server}")
+            LOG.info(
+                f"Created {meeting} on {meeting.server} as {upstream.internalMeetingID}"
+            )
             await ctx.session.execute(
                 model.Meeting.update(model.Meeting.id == meeting.id).values(
                     internal_id=upstream.internalMeetingID

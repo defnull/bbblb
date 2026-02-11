@@ -409,7 +409,7 @@ class Meeting(Base):
     )
 
     def __str__(self):
-        return f"Meeting({self.external_id}')"
+        return f"Meeting({self.external_id})"
 
 
 CALLBACK_TYPE_END = "END"
@@ -480,7 +480,7 @@ class Recording(Base):
         return meta
 
     def __str__(self):
-        return f"Recording({self.record_id}')"
+        return f"Recording({self.record_id})"
 
 
 class PlaybackFormat(Base):
