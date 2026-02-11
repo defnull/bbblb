@@ -529,10 +529,8 @@ async def handle_is_meeting_running(ctx: BBBApiRequest):
         params["meetingID"] = scoped_id
         upstream = await bbb.action("isMeetingRunning", params)
 
-    if upstream.find("running") == "false":
-        async with ctx.session as session:
-            await forget_meeting(session, meeting)
-            await session.commit()
+    # Note: Empty meetings (including meetings that were just created)
+    # do not count as running. This does NOT mean the meeting has ended.
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
