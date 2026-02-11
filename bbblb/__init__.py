@@ -1,6 +1,6 @@
 import logging
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 VERSION = __version__.split(".", 2)
 VERSION[-1], _, BUILD = VERSION[-1].partition("-")
 
