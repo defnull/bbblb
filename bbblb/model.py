@@ -324,6 +324,9 @@ class Server(Base):
     #: New meetings are only created on enabled servers
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
 
+    #: A label reserves servers for clients that explicitly asked for them.
+    label: Mapped[str] = mapped_column(nullable=True)
+
     #: New meetings are only created on AVAILABLE servers
     health: Mapped[ServerHealth] = mapped_column(
         IntEnum(ServerHealth), nullable=False, default=ServerHealth.UNSTABLE
@@ -345,10 +348,6 @@ class Server(Base):
         # TODO: Filter by tenant
         stmt = cls.select(enabled=True, health=ServerHealth.AVAILABLE)
         return stmt
-
-    @classmethod
-    def select_best(cls, tenant: Tenant):
-        return cls.select_available(tenant).order_by(Server.load).limit(1)
 
     def increment_load_stmt(self, load: float):
         return (

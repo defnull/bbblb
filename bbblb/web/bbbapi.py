@@ -310,6 +310,11 @@ async def handle_create(ctx: BBBApiRequest):
             % (utils.MAX_MEETING_ID_LEN - (len(scoped_id) - len(unscoped_id))),
         )
 
+    # Apply tenant-specific create call overrides
+    for override in tenant.overrides:
+        if override.type == "create":
+            override.apply(params)
+
     # Phase one: Fetch an existing meeting, or create one in our own database
     # and assign a server, so the next create call will use the same server.
 
@@ -318,8 +323,40 @@ async def handle_create(ctx: BBBApiRequest):
     meeting_created = False
 
     if not meeting:
+        stmt = model.Server.select_available(tenant)
+
+        # Handle scalelite-style server tagging
+        # https://github.com/blindsidenetworks/scalelite/blob/master/docs/tags-README.md#create-call-with-server-tag-metaparameter
+        server_tags = params.get("meta_server-tags", "").split(";")
+        if force_labels := server_tags[-1].endswith("!"):
+            server_tags[-1] = server_tags[-1][:-1]
+        labels: set[str | None] = set(filter(None, server_tags))
+        if allow_unlabeled := "none" in labels:
+            labels.discard("none")
+
+        if labels and force_labels:
+            # Consider only servers with a matching label
+            label_filter = model.Server.label.in_(labels)
+            if allow_unlabeled:
+                label_filter |= model.Server.label.is_(None)
+            stmt = stmt.filter(label_filter)
+        elif labels:
+            # Prefer matching servers, but also consider unlabeled servers
+            stmt = stmt.filter(
+                model.Server.label.in_(labels) | model.Server.label.is_(None)
+            )
+            stmt = stmt.order_by(
+                model.func.CASE(
+                    (model.Server.label.in_(labels), 0),
+                    else_=1,
+                )
+            )
+        else:
+            # Consider unlabeled servers only (default)
+            stmt = stmt.filter(model.Server.label.is_(None))
+
         # Find best server for new meetings
-        stmt = model.Server.select_best(tenant).with_for_update()
+        stmt = stmt.order_by(model.Server.load).limit(1).with_for_update()
         server = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if not server:
             raise make_error("internalError", "No suitable servers available.")
@@ -341,11 +378,6 @@ async def handle_create(ctx: BBBApiRequest):
                 uuid=uuid.uuid4(), external_id=unscoped_id, server=server, tenant=tenant
             ),
         )
-
-    # Apply tenant-specific create call overrides
-    for override in tenant.overrides:
-        if override.type == "create":
-            override.apply(params)
 
     # Enforce BBBLB specific overrides
     params["meetingID"] = scoped_id
