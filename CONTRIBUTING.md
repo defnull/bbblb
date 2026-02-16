@@ -40,15 +40,16 @@ understand and agree to the following *Developer Certificate of Origin* and
 ## Contributor License Agreement
 
     This Contributor Agreement is between the Project Owner (currently
-    represented by Marcel hellkamp) and the individual or other entity
-    contributing to the Project (“the Contributor”).
+    represented by Marcel Hellkamp) and the individual or other entity
+    contributing to the project (“the Contributor”).
 
     By contributing to this project, the Contributor understands and agrees
-    that the current or future Project Owner shall have the irrevocable and
-    perpetual right to make and distribute copies of any contribution, as
+    that the current and any future Project Owner shall have the irrevocable
+    and perpetual right to make and distribute copies of any contribution, as
     well as to create and distribute collective works and derivative works
-    of any contribution, under the initial license (currently AGPL-3.0) or
-    other suitable licenses chosen by the Project Owner.
+    of any contribution, under the default license of the project (currently
+    AGPL-3.0) as well as any future default license chosen for the project
+    by the Project Owner from a list of OSI approved licenses.
 
     The Project Owner understands and agrees that the Contributor retains
     copyright in its contributions. Nothing in this Contributor License
