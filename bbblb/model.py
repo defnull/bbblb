@@ -422,6 +422,24 @@ class Meeting(Base):
         return f"Meeting({self.external_id})"
 
 
+class MeetingStats(Base):
+    __tablename__ = "meeting_stats"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ts: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), insert_default=utcnow, nullable=False
+    )
+    uuid: Mapped[UUID] = mapped_column(nullable=False)
+    meeting_id: Mapped[str] = mapped_column(nullable=False)
+
+    tenant_fk: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=True)
+    tenant: Mapped["Tenant"] = relationship(lazy=True)
+
+    users: Mapped[int] = mapped_column(nullable=False, default=0)
+    voice: Mapped[int] = mapped_column(nullable=False, default=0)
+    video: Mapped[int] = mapped_column(nullable=False, default=0)
+
+
 CALLBACK_TYPE_END = "END"
 CALLBACK_TYPE_REC = "REC"
 

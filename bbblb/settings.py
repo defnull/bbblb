@@ -215,6 +215,12 @@ class BBBLBConfig(BaseConfig):
     #: server is considered to be AVAILABLE again.
     POLL_RECOVER: int = 5
 
+    #: Log meeting statistics into a database table.
+    #: WARNING! There is no automatic cleanup! The table will grow by one row per
+    #: meeting per `POLL_INTERVAL`. Make sure your database can handle it and won't
+    #: slowly fill up your entire disk.
+    POLL_STATS: bool = False
+
     #: Base load counted for each meeting.
     LOAD_BASE: float = 5.0
 

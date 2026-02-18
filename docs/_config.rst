@@ -79,6 +79,13 @@ so they can be re-created on another server.
 Number of successfull health checks in a row after which an OFFLINE or UNSTABLE
 server is considered to be AVAILABLE again.
 
+``POLL_STATS`` (type: ``bool``, default: ``False``)
+
+Log meeting statistics into a database table.
+WARNING! There is no automatic cleanup! The table will grow by one row per
+meeting per `POLL_INTERVAL`. Make sure your database can handle it and won't
+slowly fill up your entire disk.
+
 ``LOAD_BASE`` (type: ``float``, default: ``5.0``)
 
 Base load counted for each meeting.

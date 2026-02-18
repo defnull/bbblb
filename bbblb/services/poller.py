@@ -35,6 +35,7 @@ class MeetingPoller(BackgroundService):
         self.timeout = self.interval * 1.1
         self.maxerror = config.POLL_FAIL
         self.minsuccess = config.POLL_RECOVER
+        self.stats_enabled = config.POLL_STATS
 
     async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
@@ -110,7 +111,8 @@ class MeetingPoller(BackgroundService):
 
         LOG.info(f"[{server.domain}] Polling... (state={server.health.name})")
         running_ids = set()
-        stats = ServerStats()
+        server_stats = ServerStats()
+        meeting_stats = []
         success = True
         try:
             async with self.bbb.connect(server.api_base, server.secret) as client:
@@ -135,12 +137,14 @@ class MeetingPoller(BackgroundService):
                 except ValueError:
                     size_hint = 0
 
-                stats.meetings += 1
-                stats.users += users
-                stats.voice += voice
-                stats.video += video
-                stats.largest = max(stats.largest, users)
-                stats.load += self.get_meeting_load(users, voice, video, age, size_hint)
+                server_stats.meetings += 1
+                server_stats.users += users
+                server_stats.voice += voice
+                server_stats.video += video
+                server_stats.largest = max(server_stats.largest, users)
+                server_stats.load += self.get_meeting_load(
+                    users, voice, video, age, size_hint
+                )
 
                 if meeting_id not in meetings:
                     if parent_id:
@@ -152,17 +156,33 @@ class MeetingPoller(BackgroundService):
                     )
                     continue  # Ignore unknown meetings
 
+                if self.stats_enabled:
+                    meeting = meetings[meeting_id]
+                    meeting_stats.append(
+                        model.MeetingStats(
+                            uuid=meeting.uuid,
+                            meeting_id=meeting.external_id,
+                            tenant_fk=meeting.tenant_fk,
+                            users=users,
+                            voice=voice,
+                            video=video,
+                        )
+                    )
+
         except BBBError as err:
             LOG.warning(f"[{server.domain}] Server returned an error: {err}")
             success = False
 
         async with self.db.session() as session:
+            if meeting_stats:
+                session.add_all(meeting_stats)
+
             # Forget meetings not found on server
-            forget_ids = list(
+            forget_ids = [
                 meeting.id
                 for meeting in meetings.values()
                 if meeting.internal_id not in running_ids
-            )
+            ]
             if forget_ids:
                 LOG.debug(
                     f"[{server.domain}] Removing {len(forget_ids)} meetings that were not found on the server"
@@ -185,20 +205,20 @@ class MeetingPoller(BackgroundService):
             old_health = server.health
 
             if success:
-                server.load = stats.load
+                server.load = server_stats.load
                 server.stats = {
-                    "meetings": stats.meetings,
-                    "users": stats.users,
-                    "voice": stats.voice,
-                    "video": stats.video,
-                    "largest": stats.largest,
+                    "meetings": server_stats.meetings,
+                    "users": server_stats.users,
+                    "voice": server_stats.voice,
+                    "video": server_stats.video,
+                    "largest": server_stats.largest,
                 }
                 server.mark_success(self.minsuccess)
             else:
                 server.mark_error(self.maxerror)
 
             LOG.info(
-                f"[{server.domain}] {server.health.name} enabled={server.enabled} meetings={stats.meetings} users={stats.users} load={stats.load:.1f}"
+                f"[{server.domain}] {server.health.name} enabled={server.enabled} meetings={server_stats.meetings} users={server_stats.users} load={server_stats.load:.1f}"
             )
 
             # Log all state changes (including recovery) as warnings

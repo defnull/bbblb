@@ -76,6 +76,7 @@ Documentation
    api.rst
    cli.rst
    recording.rst
+   accounting.rst
 
 
 License: AGPL 3.0
