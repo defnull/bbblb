@@ -68,7 +68,7 @@ class DBContext(ManagedService, HealthReportingMixin):
 
         except ConnectionRefusedError as e:
             raise RuntimeError(f"Failed to connect to database: {e}")
-        except BaseException as e:
+        except Exception as e:
             raise RuntimeError(f"Failed to initialize database: {e}")
 
     async def check_health(self) -> tuple[Health, str]:
@@ -78,7 +78,7 @@ class DBContext(ManagedService, HealthReportingMixin):
             async with self.engine.connect() as conn:
                 await conn.execute(sqlalchemy.text("SELECT 'health check'"))
             return Health.OK, "Connection established"
-        except BaseException as exc:
+        except Exception as exc:
             return Health.CRITICAL, f"ERROR: {exc}"
 
     async def on_shutdown(self):
