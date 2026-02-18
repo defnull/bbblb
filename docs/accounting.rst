@@ -6,22 +6,23 @@ When running a shared cluster for multiple tenants, you may want to monitor clus
 or even compute accountable usage numbers per tenant. There are several ways to achieve
 this goal, all with their own benefits and drawbacks.
 
-Working with `events.xml`
-=========================
+Parsing raw `events.xml` files
+==============================
 
 You could use tenant overrides to enforce `meetingKeepEvents=true` during meeting creation,
 and then collect and analyse the `events.xml` files from all your BBB servers.
 
 This is the most detailed, but also most invasive approach because `events.xml` contains
-WAY more data than necessary, including participant names and chat messages. You should
-definitely speak to your *Data Protection Officer* to make sure this is okay. 
+WAY more data than necessary, including participant names and chat messages, even
+private chats. You should definitely speak to your *Data Protection Officer* to make
+sure this is okay.
 
 You'd also need to parse and process `events.xml` yourself. I'm not aware of any
 ready-to-use tool to get usage statistics out of those even streams.
 
 
-Enabling `ANALYTICS_STORE`
-==========================
+Collecting analytics data
+=========================
 
 Similar to the `events.xml` approach you can use tenant overrides to enforce
 `meetingKeepEvents=true` during meeting creation, but instead of fetching and parsing raw
@@ -36,8 +37,8 @@ need to get rid of the `events.xml` files on your BBB servers in a timely manner
 get in conflict with GDPR.
 
 
-Enabling `POLL_STATS`
-=====================
+Detailed metrics with `POLL_STATS`
+==================================
 
 .. versionadded:: 0.0.17
 
@@ -46,28 +47,35 @@ Enabling `POLL_STATS`
    This is an experimental feature.
 
 
-BBBLB can store meeting statistics (namely `users`, `voice` and `video` counts) into the
-database, allowing you to run your own queries and analytics. This is disabled by default,
-because one database row per meeting per `POLL_INTERVAL` quickly adds up and there is no
-automatic cleanup. You'll have to delete old rows yourself and make sure your database can
-handle it. On the plus side, those numbers won't contain any personal data, just meeting
-IDs and counters.
+BBBLB can collect detailed metrics and store them in the database, allowing you to run
+your own SQL queries to get any statistics you may need. Once activated with the
+`POLL_STATS` setting, the meeting poller will store the current `users`, `voice` and
+`video` counts for each running meeting on each server poll. Those metrics do not
+contain any personal data, which makes this approach very GDPR friendly.
 
-Once activated with the `POLL_STATS` setting, the meeting poller will store the current
-user, voice and video stream count per meeting on each poll. You can write your own SQL
-queries to get what you need. A common approach would be to fetch all rows in a certain
-time range, calculate average values per meeting, then group those together by tenant.
+The `POLL_STATS` feature is disabled by default, because the database table will grow by
+one row per meeting per `POLL_INTERVAL` and there is no automatic cleanup. This adds up
+quickly, especially for large or busy clusters. Make sure to delete old rows regularly
+to keep your database size in check.
 
-Here is an (untested) example query that shows most of the techniques:
+The `meeting_stats` table is structured similar to a time series database. Each row has
+a timestamp (`ts`), the `uuid` of the meeting, the reuseable external `meeting_id` that
+was used to create the meeting, the owning tenant (`tenant_fk`), and three metric values
+named `users`, `voice` and `video`.
+
+Here is an (untested) example PostgreSQL query returning some useful aggregations. It
+fetches all rows in a certain time range, calculate min/max/average values per meeting
+(per `uuid`), then groups those together by `tenant_fk` to get meaningfull aggregated
+values per tenant:
 
 .. code:: sql
 
   SELECT
     tenants.name,
-    /* Total number of meeting minutes spent by each participant */ 
-    SUM(users_avg * EXTRACT(epoch FROM started - ended)) / 60,
+    /* Total number of meeting minutes spent by all users combined */ 
+    SUM(users_avg * EXTRACT(epoch FROM duration)) / 60,
     /* Average meeting duration in minutes */ 
-    AVG(EXTRACT(epoch FROM started - ended)) / 60, 
+    AVG(EXTRACT(epoch FROM duration)) / 60, 
     /* Aveage meeting size */ 
     AVG(users_avg),
     /* Maximum meeting size */ 
@@ -80,8 +88,7 @@ Here is an (untested) example query that shows most of the techniques:
       SELECT
         tenant_fk,
         uuid,
-        MIN(ts) AS started,
-        MAX(ts) AS ended,
+        MAX(ts) - MIN(ts) as duration
         AVG(users) AS users_avg
         MAX(users) AS users_max
       FROM meeting_stats
@@ -90,3 +97,4 @@ Here is an (untested) example query that shows most of the techniques:
   )
   INNER JOIN tenants ON (tenant_fk = tenants.id)
   GROUP BY tenants.name
+
