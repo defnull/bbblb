@@ -39,9 +39,9 @@ understand and agree to the following *Developer Certificate of Origin* and
 
 ## Contributor License Agreement
 
-    This Contributor Agreement is between the Project Owner (currently
-    represented by Marcel Hellkamp) and the individual or other entity
-    contributing to the project (“the Contributor”).
+    This Contributor License Agreement is between the Project Owner
+    (currently represented by Marcel Hellkamp) and the individual or
+    other entity contributing to the project (“the Contributor”).
 
     By contributing to this project, the Contributor understands and agrees
     that the current and any future Project Owner shall have the irrevocable
