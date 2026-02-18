@@ -13,7 +13,7 @@ async def test_update_load(
 
     # Set a fake load value
     await orm.execute(
-        bbb_server.update(bbblb.model.Server.id == bbb_server.id).values(load=1337.0)
+        bbb_server.update(bbblb.model.Server.id == bbb_server.id).values(load=1337.42)
     )
     await orm.commit()
     await orm.reset()
@@ -26,4 +26,4 @@ async def test_update_load(
         await orm.execute(bbblb.model.Server.select(id=bbb_server.id))
     ).scalar_one()
     assert server.health == bbblb.model.ServerHealth.AVAILABLE
-    assert server.load != 1337.0
+    assert server.load != 1337.42

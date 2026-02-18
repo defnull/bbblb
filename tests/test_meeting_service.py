@@ -56,5 +56,5 @@ async def test_cleanup_callbacks(orm: AsyncSession, services: ServiceRegistry):
     orm.add_all([t1, s1, c1, c2])
     await orm.commit()
 
-    await helper._cleanup_old_callbacks(timedelta(days=45))
+    assert 1 == await helper._cleanup_old_callbacks(timedelta(days=45))
     assert [c1] == (await orm.execute(model.Callback.select())).scalars().all()
