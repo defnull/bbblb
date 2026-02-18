@@ -224,14 +224,21 @@ class BackgroundService(ManagedService, HealthReportingMixin):
 
 
 def configure_logging(config: BBBLBConfig):
-    ROOT_LOGGER.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
-    ROOT_LOGGER.propagate = False
-    if not ROOT_LOGGER.handlers:
+    # Configure root logger, if logging is not configured already.
+    if not ROOT_LOGGER.hasHandlers():
+        ROOT_LOGGER.setLevel(logging.DEBUG if config.DEBUG else logging.INFO)
+        ROOT_LOGGER.propagate = False  # Detach from actual root logger
         ch = logging.StreamHandler(stream=sys.stderr)
         ch.setFormatter(
-            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+            logging.Formatter(
+                "%(asctime)s %(levelname)s %(name)s - %(message)s",
+                datefmt="%Y-%m-%dT%H:%M:%S%z",
+            )
         )
         ROOT_LOGGER.addHandler(ch)
+        ROOT_LOGGER.warning(
+            f"Logging is not configured for {ROOT_LOGGER.name!r} logger, adding a fallback console handler."
+        )
 
 
 async def bootstrap(
