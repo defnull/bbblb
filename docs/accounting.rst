@@ -64,7 +64,7 @@ was used to create the meeting, the owning tenant (`tenant_fk`), and three metri
 named `users`, `voice` and `video`.
 
 Here is an (untested) example PostgreSQL query returning some useful aggregations. It
-fetches all rows in a certain time range, calculate min/max/average values per meeting
+fetches all rows in a certain time range, calculates min/max/avg values per meeting
 (per `uuid`), then groups those together by `tenant_fk` to get meaningfull aggregated
 values per tenant:
 
@@ -81,18 +81,18 @@ values per tenant:
     /* Maximum meeting size */ 
     MAX(users_max),
     /* Number of meetings with more than 100 users peak */ 
-    COUNT(CASE WHEN users_max > 100 THEN 1 END)
+    COUNT(CASE WHEN users_max > 100 THEN 1 END),
     /* Number of meetings */ 
-    COUNT(*),
+    COUNT(*)
   FROM (
       SELECT
         tenant_fk,
         uuid,
-        MAX(ts) - MIN(ts) as duration
-        AVG(users) AS users_avg
+        MAX(ts) - MIN(ts) as duration,
+        AVG(users) AS users_avg,
         MAX(users) AS users_max
       FROM meeting_stats
-      WHERE ts::date <@ '[2027-01-01,2027-02-01)'::daterange 
+      WHERE ts::date <@ '[2026-02-01,2026-03-01)'::daterange 
       GROUP BY tenant_fk, uuid
   )
   INNER JOIN tenants ON (tenant_fk = tenants.id)
