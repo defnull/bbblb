@@ -272,6 +272,7 @@ async def sync_tenants(
                     cmp = model.TenantOverride(
                         type=otype, param=oparam, op=op, value=value
                     )
+                    changed = True
                     tenant.overrides.append(cmp)
                     click.echo(f"{cmp} added")
                 changed |= logchange(cmp, "op", op)
