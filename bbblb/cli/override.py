@@ -33,7 +33,7 @@ async def override_list(obj: ServiceRegistry, tenant: str, type: list[str]):
     async with db.session() as session:
         if tenant:
             stmt = model.TenantOverride.select(
-                model.TenantOverride.tenant.name == tenant
+                model.TenantOverride.tenant.has(name=tenant)
             )
         else:
             stmt = model.TenantOverride.select()
