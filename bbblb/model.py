@@ -279,7 +279,7 @@ class TenantOverride(Base):
             raise ValueError("TenantOverride.param must be a non-empty string")
         return value
 
-    def apply(self, params):
+    def apply(self, params: dict[str, str]):
         if self.op == OPERATOR_FORCE:
             if self.value:
                 params[self.param] = self.value
@@ -295,11 +295,11 @@ class TenantOverride(Base):
             if orig <= 0 or orig > int(self.value):
                 params[self.param] = self.value
         elif self.op == OPERATOR_ADD:
-            params = params.get(self.param, "").split(",")
-            for add in self.value.split():
-                if add not in params:
-                    params.append(add)
-            params[self.param] = ",".join(filter(None, params))
+            values = params.get(self.param, "").split(",")
+            for add in self.value.split(","):
+                if add not in values:
+                    values.append(add)
+            params[self.param] = ",".join(filter(None, values))
 
     def __str__(self):
         return f"TenantOverride({self.tenant}, {self.type}, {self.param}{self.op}{self.value})"
