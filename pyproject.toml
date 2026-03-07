@@ -1,7 +1,7 @@
 [project]
 name = "bbblb"
 dynamic = ["version"]
-description = "Yet another load balancer for BigBlueButton"
+description = "Load balancer for BigBlueButton"
 readme = "README.md"
 authors = [
   {name = "Marcel Hellkamp", email = "me@defnull.de"},

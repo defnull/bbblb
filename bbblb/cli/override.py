@@ -1,3 +1,6 @@
+# Copyright (C) 2025, 2026  Marcel Hellkamp
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 import re
 from bbblb import model
 from bbblb.services import ServiceRegistry

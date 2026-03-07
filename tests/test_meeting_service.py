@@ -1,3 +1,6 @@
+# Copyright (C) 2025, 2026  Marcel Hellkamp
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 import uuid
 from bbblb import model
 from datetime import timedelta

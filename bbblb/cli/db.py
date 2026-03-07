@@ -1,3 +1,6 @@
+# Copyright (C) 2025, 2026  Marcel Hellkamp
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 import click
 from bbblb.services import ServiceRegistry
 from bbblb.services.db import check_migration_state, create_database, migrate_db
