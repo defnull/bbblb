@@ -22,7 +22,7 @@ extensions = [
 
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
-source_suffix = ['.rst', '.md']
+source_suffix = [".rst", ".md"]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -30,12 +30,14 @@ source_suffix = ['.rst', '.md']
 html_theme = "alabaster"
 html_static_path = ["_static"]
 html_theme_options = {
-    'github_user': 'defnull',
-    'github_repo': 'bbblb',
-    'fixed_sidebar': True,
-    'github_banner': True,
-    'github_button': False,
+    "logo": "bbblb_logo.svg",
+    "github_user": "defnull",
+    "github_repo": "bbblb",
+    "fixed_sidebar": True,
+    "github_banner": True,
+    "github_button": False,
 }
+
 
 smartquotes = False
 
