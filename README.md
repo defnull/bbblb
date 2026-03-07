@@ -46,10 +46,6 @@ graph TD
     BBBLB -->|BBB API| BBBN
 ```
 
-# Contributing
-
-By contributing to this project, you confirm that you understand and agree to both the *Developer Certificate of Origin* and the *Contributor License Agreement*, which can be found in the `CONTRIBUTING.md` file. 
-
 
 # Sponsors
 
