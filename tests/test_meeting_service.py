@@ -10,17 +10,21 @@ from bbblb.services.bbb import BBBHelper
 async def test_cleanup_stale_meetings(orm: AsyncSession, services: ServiceRegistry):
     helper = await services.use(BBBHelper)
 
+    # Default is 5, so we use 3 here to avoid the default background
+    # cleanup task removing our test entries and cause flaky tests.
+    cleanup_minutes = 3
+
     t1 = model.Tenant(name="test", realm="bbb.example.com", secret="test")
     s1 = model.Server(domain="bbb1.example.com", secret="test")
     m1 = model.Meeting(
-        created=model.utcnow() - timedelta(minutes=4),
+        created=model.utcnow() - timedelta(minutes=cleanup_minutes - 1),
         tenant=t1,
         server=s1,
         uuid=uuid.uuid4(),
         external_id="foo",
     )
     m2 = model.Meeting(
-        created=model.utcnow() - timedelta(minutes=6),
+        created=model.utcnow() - timedelta(minutes=cleanup_minutes + 1),
         tenant=t1,
         server=s1,
         uuid=uuid.uuid4(),
@@ -29,7 +33,7 @@ async def test_cleanup_stale_meetings(orm: AsyncSession, services: ServiceRegist
     orm.add_all([t1, s1, m1, m2])
     await orm.commit()
 
-    await helper._cleanup_stale_meetings(timedelta(minutes=5))
+    await helper._cleanup_stale_meetings(timedelta(minutes=cleanup_minutes))
     assert [m1] == (await orm.execute(model.Meeting.select())).scalars().all()
 
 
@@ -39,15 +43,19 @@ async def test_cleanup_callbacks(orm: AsyncSession, services: ServiceRegistry):
     t1 = model.Tenant(name="test", realm="bbb.example.com", secret="test")
     s1 = model.Server(domain="bbb1.example.com", secret="test")
 
+    # Default is 30, so we use 10 here to avoid the default background
+    # cleanup task removing our test entries and cause flaky tests.
+    cleanup_days = 10
+
     c1 = model.Callback(
-        created=model.utcnow() - timedelta(days=44),
+        created=model.utcnow() - timedelta(days=cleanup_days - 1),
         tenant=t1,
         server=s1,
         uuid=uuid.uuid4(),
         type=model.CALLBACK_TYPE_REC,
     )
     c2 = model.Callback(
-        created=model.utcnow() - timedelta(days=46),
+        created=model.utcnow() - timedelta(days=cleanup_days + 1),
         tenant=t1,
         server=s1,
         uuid=uuid.uuid4(),
@@ -56,5 +64,5 @@ async def test_cleanup_callbacks(orm: AsyncSession, services: ServiceRegistry):
     orm.add_all([t1, s1, c1, c2])
     await orm.commit()
 
-    assert 1 == await helper._cleanup_old_callbacks(timedelta(days=45))
+    assert 1 == await helper._cleanup_old_callbacks(timedelta(days=cleanup_days))
     assert [c1] == (await orm.execute(model.Callback.select())).scalars().all()
