@@ -63,27 +63,47 @@ a timestamp (`ts`), the `uuid` of the meeting, the reuseable external `meeting_i
 was used to create the meeting, the owning tenant (`tenant_fk`), and three metric values
 named `users`, `voice` and `video`.
 
-Here is an (untested) example PostgreSQL query returning some useful aggregations. It
-fetches all rows in a certain time range, calculates min/max/avg values per meeting
-(per `uuid`), then groups those together by `tenant_fk` to get meaningfull aggregated
-values per tenant:
+The timestamp (`ts`) will be the exact same for all measurements taken during a single
+poll interval. It marks the start of the poll interval, not the exact time of an
+individual measurement. This is is done on purpose so you can group by the timestamp to
+get a consistend view of the entire cluster at a specific time.
+
+Here is an example that calculates user counts for the entire cluster over time.
+It uses the fact mentioned above that all measurements taken during a single poll interval
+will have the exact same timestamp.
+
+.. code:: sql
+
+    SELECT
+      ts,
+      COUNT(*) as meetings,
+      SUM(users) AS users
+    FROM meeting_stats
+    GROUP BY ts
+    ORDER BY ts
+
+Here is a more complex PostgreSQL example. It fetches all rows in a certain time range,
+calculates min/max/avg values per meeting (per `uuid`), then groups those together by
+`tenant_fk` to get meaningfull aggregated values per tenant.
 
 .. code:: sql
 
   SELECT
-    tenants.name,
-    /* Total number of meeting minutes spent by all users combined */ 
-    SUM(users_avg * EXTRACT(epoch FROM duration)) / 60,
-    /* Average meeting duration in minutes */ 
-    AVG(EXTRACT(epoch FROM duration)) / 60, 
-    /* Aveage meeting size */ 
-    AVG(users_avg),
-    /* Maximum meeting size */ 
-    MAX(users_max),
-    /* Number of meetings with more than 100 users peak */ 
-    COUNT(CASE WHEN users_max > 100 THEN 1 END),
+    tenants.name AS tenant,
     /* Number of meetings */ 
-    COUNT(*)
+    COUNT(*) AS meetings,
+    /* Total number of meeting minutes spent by all users combined */ 
+    SUM(users_avg * EXTRACT(epoch FROM duration)) / 60 AS meeting_minutes,
+    /* Average meeting duration in minutes */ 
+    AVG(EXTRACT(epoch FROM duration)) / 60 AS duration_avg, 
+    /* Aveage meeting size */ 
+    AVG(users_avg) AS users_avg,
+    /* Maximum meeting size */ 
+    MAX(users_max) AS users_max,
+    /* Number of meetings with more than 25 users peak */ 
+    COUNT(CASE WHEN users_max > 100 THEN 1 END) AS large_25,
+    /* Number of meetings with more than 100 users peak */ 
+    COUNT(CASE WHEN users_max > 100 THEN 1 END) AS large_100
   FROM (
       SELECT
         tenant_fk,

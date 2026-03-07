@@ -37,6 +37,11 @@ class MeetingPoller(BackgroundService):
         self.minsuccess = config.POLL_RECOVER
         self.stats_enabled = config.POLL_STATS
 
+        #: Start of a poll interval. Used as a common timestamp for all
+        #: MeetingStats entries created during a single poll run. This
+        #: allows later grouping by poll interval.
+        self._poll_start = 0.0
+
     async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
         self.lock = locks.create(
@@ -67,12 +72,13 @@ class MeetingPoller(BackgroundService):
 
             if not await self.lock.check():
                 LOG.warning(f"We lost the {self.lock.name!r} lock!?")
-                break
+                return
 
             async with self.db.session() as session:
                 result = await session.execute(model.Server.select())
                 servers = result.scalars()
 
+            self._poll_start = model.utcnow()
             futures = [
                 asyncio.ensure_future(self.poll_one(server.id)) for server in servers
             ]
@@ -160,6 +166,7 @@ class MeetingPoller(BackgroundService):
                     meeting = meetings[meeting_id]
                     meeting_stats.append(
                         model.MeetingStats(
+                            ts=self._poll_start,
                             uuid=meeting.uuid,
                             meeting_id=meeting.external_id,
                             tenant_fk=meeting.tenant_fk,

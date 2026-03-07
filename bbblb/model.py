@@ -426,6 +426,9 @@ class MeetingStats(Base):
     __tablename__ = "meeting_stats"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    #: Timestamp of the poll run. This SHOULD be identical for all
+    #: entries created during the same poll interval, so we can group
+    #: over the timestamp later.
     ts: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), insert_default=utcnow, nullable=False
     )
