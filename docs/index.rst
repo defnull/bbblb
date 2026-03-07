@@ -35,9 +35,9 @@ on shared hardware.
 
 .. note::
 
-   BBBLB is used in production, but still a very new project and may
+   BBBLB is used in production, but still a very new project that may
    have some rough edges. Some APIs or features may not be stable yet
-   and upgrades may break things. If you are looking for a simple
+   and upgrades may break things. If you are looking for a stable
    solution that *just works*, better wait for the 1.0 release. But if
    you know what you are doing, go ahead and give it a try.
  
