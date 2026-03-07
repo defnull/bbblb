@@ -1,3 +1,4 @@
+import logging
 import os
 import pytest
 import pytest_asyncio
@@ -49,6 +50,10 @@ async def db(services: bbblb.services.ServiceRegistry):
     for table in reversed(bbblb.model.Base.metadata.sorted_tables):
         async with db.session() as session, session.begin():
             await session.execute(table.delete())
+
+    # Enable SQL logging for all tests that do something with the DB
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
     yield db
 
 
