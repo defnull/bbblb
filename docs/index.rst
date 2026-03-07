@@ -33,13 +33,14 @@ on shared hardware.
    :alt: Matrix room: #bbblb:matrix.org
 
 
-.. caution::
+.. note::
 
-   BBBLB is not ready for production just yet unless you know how to fix
-   bugs yourself. It works well enough, but APIs and features are not
-   stable yet and upgrades may break things. If you are looking for a
-   reliable solution that *just works*, better wait for the 1.0 release.
-
+   BBBLB is used in production, but still a very new project and may
+   have some rough edges. Some APIs or features may not be stable yet
+   and upgrades may break things. If you are looking for a simple
+   solution that *just works*, better wait for the 1.0 release. But if
+   you know what you are doing, go ahead and give it a try.
+ 
 
 Features
 --------
