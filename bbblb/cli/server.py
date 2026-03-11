@@ -53,8 +53,13 @@ async def create(obj: ServiceRegistry, update: bool, domain: str, secret: str | 
 
 @server.command()
 @click.argument("domain")
+@click.option(
+    "--now",
+    help="Make the server immediately available for new meetings.",
+    is_flag=True,
+)
 @async_command()
-async def enable(obj: ServiceRegistry, domain: str):
+async def enable(obj: ServiceRegistry, domain: str, now: bool):
     """Enable a server and make it available for new meetings."""
     db = await obj.use(DBContext)
     async with db.session() as session:
@@ -68,6 +73,8 @@ async def enable(obj: ServiceRegistry, domain: str):
             click.echo(f"Server {domain!r} already enabled")
         else:
             server.enabled = True
+            if now:
+                server.mark_success(recover_threshold=0)
             await session.commit()
             click.echo(f"Server {domain!r} enabled")
 

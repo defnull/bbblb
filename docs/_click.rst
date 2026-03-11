@@ -336,11 +336,12 @@ Enable a server and make it available for new meetings.
 .. table:: Options
   :width: 100%
 
-  ======  =================
-  Option  Help             
-  ======  =================
-  DOMAIN  Required argument
-  ======  =================
+  ======  =======================================================
+  Option  Help                                                   
+  ======  =======================================================
+  DOMAIN  Required argument                                      
+  --now   Make the server immediately available for new meetings.
+  ======  =======================================================
 
 server disable
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

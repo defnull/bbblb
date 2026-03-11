@@ -359,6 +359,11 @@ class Server(Base):
         )
 
     def mark_error(self, fail_threshold: int):
+        """For OFFLINE servers, do nothing. For UNSTABLE or AVAILABLE
+        servers, increase the error counter and set the server to
+        UNSTABLE until the fail_threshold is reached, then set the
+        server to OFFLINE.
+        """
         if self.health == ServerHealth.OFFLINE:
             pass  # Already dead
         elif self.errors < fail_threshold:
@@ -375,6 +380,11 @@ class Server(Base):
             LOG.warning(f"Server {self.domain} is OFFLINE")
 
     def mark_success(self, recover_threshold: int):
+        """For AVAILABLE servers, do nothing. For OFFLINE or UNSTABLE
+        servers, increase the recovery counter and set the server to
+        UNSTABLE until the recover_threshold is reached, then set the
+        server to AVAILABLE.
+        """
         if self.health == ServerHealth.AVAILABLE:
             pass  # Already healthy
         elif self.recover < recover_threshold:
