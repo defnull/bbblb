@@ -1,7 +1,6 @@
 # Copyright (C) 2025, 2026  Marcel Hellkamp
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
-import asyncio
 import click
 import sqlalchemy.orm
 
@@ -53,12 +52,24 @@ async def _delete(obj: ServiceRegistry, record_id):
             click.echo(f"Deleted {record.record_id}")
 
 
+async def _ensure_state(
+    rm: RecordingManager, record_id: str, state: model.RecordingState
+):
+    old_state = await rm.ensure_state(record_id, state)
+    if not old_state:
+        click.echo(f"Not found: {record_id}")
+    elif old_state is not state:
+        click.echo(f"Published: {record_id}")
+
+
 @recording.command()
 @click.argument("record_id", nargs=-1)
 @async_command()
 async def publish(obj: ServiceRegistry, record_id):
     """Publish recordings"""
-    await _change_publish_flag(obj, list(record_id), model.RecordingState.PUBLISHED)
+    importer = await obj.use(RecordingManager)
+    for item in record_id:
+        await _ensure_state(importer, item, model.RecordingState.PUBLISHED)
 
 
 @recording.command()
@@ -66,32 +77,9 @@ async def publish(obj: ServiceRegistry, record_id):
 @async_command()
 async def unpublish(obj: ServiceRegistry, record_id):
     """Unpublish recordings"""
-    await _change_publish_flag(obj, list(record_id), model.RecordingState.UNPUBLISHED)
-
-
-async def _change_publish_flag(
-    obj: ServiceRegistry, record_id: list[str], state: model.RecordingState
-):
     importer = await obj.use(RecordingManager)
-    db = await obj.use(DBContext)
-
-    async with db.session() as session:
-        stmt = model.Recording.select(model.Recording.record_id.in_(record_id)).options(
-            sqlalchemy.orm.joinedload(model.Recording.tenant)
-        )
-        records = (await session.execute(stmt)).scalars().all()
-        for record in records:
-            if record.state != state:
-                record.state = state
-                await session.commit()
-            if state == model.RecordingState.PUBLISHED:
-                await asyncio.to_thread(
-                    importer.publish, record.tenant.name, record.record_id
-                )
-            else:
-                await asyncio.to_thread(
-                    importer.unpublish, record.tenant.name, record.record_id
-                )
+    for item in record_id:
+        await _ensure_state(importer, item, model.RecordingState.UNPUBLISHED)
 
 
 @recording.command("import")
@@ -119,19 +107,13 @@ async def _import(obj: ServiceRegistry, tenant: str, publish: bool | None, file:
         click.echo(
             f"Imported: {format.recording.tenant.name}/{format.recording.record_id} ({format.format})"
         )
-        if (
-            publish is True
-            and format.recording.started != model.RecordingState.PUBLISHED
-        ):
-            await _change_publish_flag(
-                obj, [format.recording.record_id], model.RecordingState.PUBLISHED
+        if publish is True:
+            await _ensure_state(
+                importer, format.recording.record_id, model.RecordingState.PUBLISHED
             )
-        elif (
-            publish is False
-            and format.recording.started != model.RecordingState.UNPUBLISHED
-        ):
-            await _change_publish_flag(
-                obj, [format.recording.record_id], model.RecordingState.UNPUBLISHED
+        elif publish is False:
+            await _ensure_state(
+                importer, format.recording.record_id, model.RecordingState.UNPUBLISHED
             )
     for error in task.errors:
         click.echo(f"ERROR: {error}")

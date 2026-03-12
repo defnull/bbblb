@@ -704,13 +704,11 @@ async def handle_publish_recordings(ctx: BBBApiRequest):
     publish = (await ctx.require_param("publish")).lower() == "true"
 
     if publish:
-        action = importer.publish
         new_state = model.RecordingState.PUBLISHED
     else:
-        action = importer.unpublish
         new_state = model.RecordingState.UNPUBLISHED
 
-    # Fetch all recordings
+    # Fetch all matching recordings, regardless of their state
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
     )
@@ -719,24 +717,9 @@ async def handle_publish_recordings(ctx: BBBApiRequest):
     if not recs:
         return make_error("notFound", "Unknown recording")
 
-    # Publish or unpublish recordings
+    # Publish or unpublish individual recordings
     for rec in recs:
-        try:
-            await asyncio.to_thread(action, tenant.name, rec.record_id)
-            # TODO: This is racy, but unlikely to cause issues. Improve?
-            await ctx.session.execute(
-                model.Recording.update(model.Recording.id == rec.id).values(
-                    state=new_state
-                )
-            )
-        except FileNotFoundError:
-            LOG.exception(
-                f"Recording {rec.record_id} found in database but not in storage!"
-            )
-            continue
-
-    # Persist changes (may be fewer than requested)
-    await ctx.session.commit()
+        await importer.ensure_state(rec.record_id, new_state)
 
     return XML.response(
         XML.returncode("SUCCESS"),

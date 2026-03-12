@@ -55,6 +55,11 @@ ID may end up in recording metadata and logs.
 Maximum number of import tasks to perform at the same timer. It is usually
 not a good idea to increase this too much.
 
+``RECORDING_IMPORT_UNPUBLISHED`` (type: ``bool``, default: ``False``)
+
+BBB publishes new recordings by default. If this setting is True, then BBBLB will
+import new recordings as 'unpublished' regardless of their original state.
+
 ``PLAYBACK_DOMAIN`` (type: ``str``, default: ``"{DOMAIN}"``)
 
 Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}

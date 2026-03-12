@@ -94,7 +94,7 @@ def _sanity_pathname(name: str):
     return name
 
 
-class FormatXML:
+class FormatXMLWrapper:
     def __init__(self, xml: ETree):
         self.xml = xml
 
@@ -153,8 +153,12 @@ class FormatXML:
         return int(self.xml.findtext("participants") or 0)
 
     @cached_property
-    def state(self):
-        return model.RecordingState.UNPUBLISHED
+    def published(self):
+        pinfo = self.xml.findtext("published")
+        if pinfo and pinfo.lower() == "true":
+            return model.RecordingState.PUBLISHED
+        else:
+            return model.RecordingState.UNPUBLISHED
 
     @cached_property
     def playback_node(self):
@@ -168,6 +172,14 @@ class RecordingManager(BackgroundService):
     def __init__(
         self, config: BBBLBConfig, db: DBContext, locks: LockManager, bbb: BBBHelper
     ):
+
+        self.db = db
+        self.bbb = bbb
+
+        self.poll_interval = config.POLL_INTERVAL
+        self.is_worker = config.WORKER
+        self.import_unpublished = config.RECORDING_IMPORT_UNPUBLISHED
+
         self.base_dir = (config.PATH_DATA / "recordings").resolve()
         self.inbox_dir = self.base_dir / "inbox"
         self.failed_dir = self.base_dir / "failed"
@@ -175,19 +187,12 @@ class RecordingManager(BackgroundService):
         self.public_dir = self.base_dir / "public"
         self.storage_dir = self.base_dir / "storage"
         self.deleted_dir = self.base_dir / "deleted"
-        max_threads = config.RECORDING_THREADS
-        self.maxtasks = asyncio.Semaphore(max_threads)
+        self.maxtasks = asyncio.Semaphore(config.RECORDING_THREADS)
         self.pool = ThreadPoolExecutor(thread_name_prefix="rec-")
         self.tasks: dict[str, "RecordingImportTask"] = {}
-
-        self.db = db
-        self.bbb = bbb
         self.lock = locks.create(
             "importer", datetime.timedelta(seconds=self.poll_interval) * 2
         )
-
-        self.poll_interval = config.POLL_INTERVAL
-        self.is_worker = config.WORKER
 
     async def on_start(self):
         # Create all directories we need, if missing
@@ -215,7 +220,7 @@ class RecordingManager(BackgroundService):
     async def import_waiting(self):
         """Pick up waiting tasks from inbox"""
         # Only pick up older files for which we are sure the regular
-        # improt didn't work or was aborted.
+        # import didn't work or was aborted.
         min_age = random.randint(60, 120)
 
         for file in self.inbox_dir.glob("*.tar"):
@@ -248,19 +253,23 @@ class RecordingManager(BackgroundService):
         self,
         data: typing.AsyncGenerator[bytes, None],
         force_tenant: str | None = None,
-        default_state: model.RecordingState | None = model.RecordingState.UNPUBLISHED,
-    ):
-        """Copy the data stream into the inbox directory and schedule a
-        :cls:`RecordingImportTask`. The returned task may take a while to
-        complete, this method only waits for the copy operation to inbox to
+        schedule=True,
+    ) -> "RecordingImportTask":
+        """Copy the provided data stream into the inbox directory and
+        schedule a :cls:`RecordingImportTask`.
+
+        This method only waits for the inbox-copy to complete, the task
+        itself runs in the background and may take several seconds to
         complete.
 
-        If fallback_tenant is set, this tenant is used if no tenant info could
-        be found in the recording. This is useful to import old recordings.
+        If force_tenant is set, a specific tenant is used and the tenant
+        referenced in metadata is ignored. This is useful to import old
+        recordings.
 
-        If replace_existing is set, any existing recording formats are replaced
-        with this new import.
-
+        If schedule is False, then the task is just returned and not
+        scheduled for execution in the background. It may still be
+        picked up and processed by any RecordingManager worker scanning
+        the import directory.
         """
 
         import_id = str(uuid.uuid4())
@@ -284,8 +293,9 @@ class RecordingManager(BackgroundService):
 
             raise
 
-        task = RecordingImportTask(self, import_id, final, force_tenant, default_state)
-        self._schedule(task)
+        task = RecordingImportTask(self, import_id, final, force_tenant)
+        if schedule:
+            self._schedule(task)
         return task
 
     def _schedule(self, task: "RecordingImportTask"):
@@ -313,8 +323,44 @@ class RecordingManager(BackgroundService):
         format = _sanity_pathname(format)
         return self.storage_dir / tenant / record_id / format
 
-    def publish(self, tenant: str, record_id: str):
-        """Publish all available formats for a recording on disk."""
+    async def ensure_state(self, record_id: str, target_state: model.RecordingState):
+        """Change the published state of a recording. Sets the new state both in the
+        the database and on disk. Returns the old state, or None if the record was
+        not found.
+        """
+
+        # TODO: This is racy, but the chances are very low. Preventing
+        # races here would require a global (db-base) lock?
+
+        # Fetch and update the DB record
+        async with self.db.session() as session:
+            stmt = model.Recording.select(
+                model.Recording.record_id == record_id
+            ).options(model.joinedload(model.Recording.tenant))
+            record = (await session.execute(stmt)).scalars().one_or_none()
+            if not record:
+                return None
+
+            old_state = record.state
+            if old_state != target_state:
+                stmt = model.Recording.update(
+                    model.Recording.record_id == record_id
+                ).values(state=target_state)
+                await session.execute(stmt)
+                await session.commit()
+
+        # Unconditionally ensure on-disk state.
+        if target_state is model.RecordingState.PUBLISHED:
+            action = self.ensure_published
+        else:
+            action = self.ensure_unpublished
+        await asyncio.to_thread(action, record.tenant.name, record.record_id)
+
+        return old_state
+
+    def ensure_published(self, tenant: str, record_id: str):
+        """Ensure all available formats for a recording have symlink
+        in the public directory on disk."""
 
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
@@ -342,7 +388,10 @@ class RecordingManager(BackgroundService):
         except FileNotFoundError:
             return
 
-    def unpublish(self, tenant: str, record_id: str):
+    def ensure_unpublished(self, tenant: str, record_id: str):
+        """Ensure no formats for this recording has a symlink in the
+        public directory on disk."""
+
         """Unpublish all formats for a given recording on disk."""
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
@@ -361,7 +410,7 @@ class RecordingManager(BackgroundService):
         record_id = _sanity_pathname(record_id)
 
         # Unpublish all formats
-        self.unpublish(tenant, record_id)
+        self.ensure_unpublished(tenant, record_id)
 
         # Move files to trash
         store_path = self.storage_dir / tenant / record_id
@@ -405,14 +454,12 @@ class RecordingImportTask:
         import_id: str,
         source: Path,
         force_tenant: str | None = None,
-        default_state: model.RecordingState | None = model.RecordingState.UNPUBLISHED,
     ):
         self.importer = importer
         self.import_id = import_id
         self.source = source
         self.task_dir = self.importer.work_dir / self.import_id
         self.force_tenant = force_tenant
-        self.default_state = default_state
 
         self.formats: list[model.PlaybackFormat] = []
         self.errors: list[BaseException] = []
@@ -570,7 +617,7 @@ class RecordingImportTask:
         try:
             xml = await self._in_pool(lxml.etree.parse, metafile)
             assert isinstance(xml, ETree)
-            metadata = FormatXML(xml)
+            metadata = FormatXMLWrapper(xml)
         except BaseException:
             raise RecordingImportError(f"Failed to parse metadata.xml: {metafile}")
 
@@ -585,6 +632,10 @@ class RecordingImportTask:
         unscoped_id = metadata.unscoped_id
         meta_dict = dict(metadata.meta)
         meta_dict["meetingId"] = unscoped_id
+
+        default_state = model.RecordingState.UNPUBLISHED
+        if metadata.published and not self.importer.import_unpublished:
+            default_state = model.RecordingState.PUBLISHED
 
         # Fetch tenant this record belongs to, or fail
         async with self.importer.db.session() as session:
@@ -608,7 +659,7 @@ class RecordingImportTask:
                     tenant=tenant,
                     record_id=record_id,
                     external_id=unscoped_id,
-                    state=self.default_state,
+                    state=default_state,
                     started=started,
                     ended=ended,
                     participants=participants,
@@ -642,7 +693,10 @@ class RecordingImportTask:
         if format_created:
             await self._trigger_callbacks(metadata)
 
-    async def _trigger_callbacks(self, metadata: FormatXML):
+        # Ensure record is actually published/unpublished
+        await self.importer.ensure_state(record.record_id, record.state)
+
+    async def _trigger_callbacks(self, metadata: FormatXMLWrapper):
         # The recording-ready callbacks are triggered for each format,
         # and may be triggered again if a format is imported multiple
         # times. That's the way BBB behaves and most front-ends expect.

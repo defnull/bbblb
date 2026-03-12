@@ -204,6 +204,10 @@ class BBBLBConfig(BaseConfig):
     #: not a good idea to increase this too much.
     RECORDING_THREADS: int = 1
 
+    #: BBB publishes new recordings by default. If this setting is True, then BBBLB will
+    #: import new recordings as 'unpublished' regardless of their original state.
+    RECORDING_IMPORT_UNPUBLISHED: bool = False
+
     #: Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
     #: can be used to refer to the global DOMAIN config, or the realm of the
     #: current tenant.
