@@ -9,18 +9,16 @@ from bbblb.services import (
     HealthReportingMixin,
     ServiceRegistry,
 )
+from bbblb.settings import BBBLBConfig
 
 LOG = logging.getLogger(__name__)
 
 
 class HealthService(BackgroundService):
-    def __init__(self, interval: int):
-        self.interval = interval
-        self.checks = {}
-
-    async def on_start(self, sr: ServiceRegistry):
+    def __init__(self, config: BBBLBConfig, sr: ServiceRegistry):
         self.sr = sr
-        await super().on_start()
+        self.interval = config.POLL_INTERVAL
+        self.checks = {}
 
     async def run(self):
         while True:

@@ -5,7 +5,7 @@ import asyncio
 import time
 
 from bbblb import model
-from bbblb.services import ManagedService, HealthReportingMixin, Health
+from bbblb.services import HealthReportingMixin, Health
 from bbblb.services.db import DBContext
 
 import logging
@@ -15,19 +15,14 @@ from bbblb.settings import BBBLBConfig
 LOG = logging.getLogger(__name__)
 
 
-class TenantCache(ManagedService, HealthReportingMixin):
-    def __init__(self, config: BBBLBConfig):
+class TenantCache(HealthReportingMixin):
+    def __init__(self, config: BBBLBConfig, db: DBContext):
         self.config = config
         self.cache = {}
         self.cache_timeout = max(1, config.TENANT_CACHE)
         self.next_refresh = 0
         self.refresh_lock = asyncio.Lock()
-
-    async def on_start(self, db: DBContext):
         self.db = db
-
-    async def on_shutdown(self):
-        pass
 
     async def check_health(self) -> tuple[Health, str]:
         await self.refresh_cache()

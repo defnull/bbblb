@@ -165,7 +165,9 @@ class FormatXML:
 
 
 class RecordingManager(BackgroundService):
-    def __init__(self, config: BBBLBConfig):
+    def __init__(
+        self, config: BBBLBConfig, db: DBContext, locks: LockManager, bbb: BBBHelper
+    ):
         self.base_dir = (config.PATH_DATA / "recordings").resolve()
         self.inbox_dir = self.base_dir / "inbox"
         self.failed_dir = self.base_dir / "failed"
@@ -178,16 +180,16 @@ class RecordingManager(BackgroundService):
         self.pool = ThreadPoolExecutor(thread_name_prefix="rec-")
         self.tasks: dict[str, "RecordingImportTask"] = {}
 
-        self.poll_interval = config.POLL_INTERVAL
-        self.auto_import = True
-
-    async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
         self.bbb = bbb
         self.lock = locks.create(
             "importer", datetime.timedelta(seconds=self.poll_interval) * 2
         )
 
+        self.poll_interval = config.POLL_INTERVAL
+        self.is_worker = config.WORKER
+
+    async def on_start(self):
         # Create all directories we need, if missing
         for dir in (d for d in self.__dict__.values() if isinstance(d, Path)):
             if dir and not dir.exists():
@@ -199,18 +201,18 @@ class RecordingManager(BackgroundService):
         try:
             while True:
                 await asyncio.sleep(self.poll_interval + random.random())
-                await self.lock.try_run_locked(self.run_locked)
+                if self.is_worker:
+                    await self.lock.try_run_locked(self.run_locked)
         finally:
             await self.close()
 
     async def run_locked(self):
         while await self.lock.check():
-            if self.auto_import:
-                await self.schedule_waiting()
+            await self.import_waiting()
             await self.cleanup()
             await asyncio.sleep(self.poll_interval)
 
-    async def schedule_waiting(self):
+    async def import_waiting(self):
         """Pick up waiting tasks from inbox"""
         # Only pick up older files for which we are sure the regular
         # improt didn't work or was aborted.

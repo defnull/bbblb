@@ -162,6 +162,7 @@ async def main(ctx, obj, config_file, config, verbose):
             del os.environ[env_name]
 
     config_.populate()
+    config_.set(WORKER=False)
     ctx.obj = await bootstrap(config_, autostart=False, logging=False)
 
 

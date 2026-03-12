@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import (
 
 from bbblb import migrations
 from bbblb.services import Health, HealthReportingMixin, ManagedService
+from bbblb.settings import BBBLBConfig
 
 LOG = logging.getLogger(__name__)
 
@@ -32,10 +33,10 @@ class DBContext(ManagedService, HealthReportingMixin):
     engine: AsyncEngine | None = None
     sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
-    def __init__(self, db_url: str, create=False, migrate=False):
-        self._db_url = db_url
-        self._create = create
-        self._migrate = migrate
+    def __init__(self, config: BBBLBConfig):
+        self._db_url = config.DB
+        self._create = config.DB_CREATE
+        self._migrate = config.DB_MIGRATE
 
     async def on_start(self):
         if self.engine or self.sessionmaker:
@@ -73,6 +74,8 @@ class DBContext(ManagedService, HealthReportingMixin):
             raise RuntimeError(f"Failed to connect to database: {e}")
         except Exception as e:
             raise RuntimeError(f"Failed to initialize database: {e}")
+
+        await super().on_start()
 
     async def check_health(self) -> tuple[Health, str]:
         if not self.engine:

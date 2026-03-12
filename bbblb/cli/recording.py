@@ -18,8 +18,7 @@ from . import main, async_command
 @async_command()
 async def recording(obj: ServiceRegistry):
     """Recording management."""
-    # Disable auto-import for use in a cli context
-    obj.get(RecordingManager, uninitialized_ok=True).auto_import = False
+    pass
 
 
 @recording.command("list")

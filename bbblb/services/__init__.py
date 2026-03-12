@@ -25,33 +25,51 @@ def _clsname(cls: type | object):
 
 
 class ServiceRegistry:
-    """A lazy service registry that provides access to arbitrary
-    service instances, identified by their type.
+    """A service registry with some basic dependency injection.
 
-    If a service instance implements :cls:`ManagedService`, then it get
-    some basic dependency injection on top and is started on demand and
-    gracefully stopped on shutdown."""
+    Services are identified by their type. There are no scopes, all
+    services are singletons.
+
+    Service factories (e.g. their class constructors) can make use of
+    other registered services via dependency injection.
+
+    If a service class implements :cls:`ManagedService`, it is started
+    if needed and gracefully stopped during shutdown.
+    """
 
     def __init__(self):
-        #: A dict mapping registered services classes to their instances
-        self.services: dict[type, typing.Any] = {}
-        #: A list of service instances that were already started.
-        self.started: list[typing.Any] = []
+        #: A dict mapping registered services classes to their factory method
+        self.services: dict[type, typing.Callable[..., typing.Any]] = {}
+        self.starting: list[type] = []
+        self.started: dict[type, typing.Any] = {}
 
         self._depencency_graph: set[tuple[type, type]] = set()
         self._start_lock = asyncio.Lock()
-        self.register(self)
+        self.register(self.__class__, lambda: self)
 
-    def register(self, service: typing.Any, _replace=False):
-        """Register a new service.
+    def register(
+        self,
+        klass: type[T],
+        factory: typing.Callable[..., T] | None = None,
+        _replace=False,
+    ):
+        """Register a new service class.
 
-        It is an error to register the same service name twice.
-        The _replace switch is only for testing.
+        You may provide a factory that returns an instance of the
+        service class. If no factory is provided, the class itself
+        (it's constructor) is used to create an instance.
+
+        The factory (or class constructor) may request dependencies via
+        named and type-annotated arguments. Those are injected during
+        initialization of the service. Dependencies are fully
+        initialized and started before the are injected.
+
+        It is an error to register the same class twice. The _replace
+        switch is only used for testing.
         """
-        klass = service.__class__
         if klass in self.services and not _replace:
             raise RuntimeError(f"Services registered twice: {_clsname(klass)}")
-        self.services[klass] = service
+        self.services[klass] = factory or klass
 
     async def __aenter__(self):
         return self
@@ -61,86 +79,109 @@ class ServiceRegistry:
         await self.shutdown()
 
     async def shutdown(self):
-        """Stop all started services."""
+        """Stop all started services in correct order according to their
+        dependency graph."""
         while self.started:
-            await self._stop(self.started[0])
+            await self._stop(next(iter(self.started), None))
 
-    def get(self, klass: type[T], uninitialized_ok=False) -> T:
-        """Request a service instance by its class.
+    def get(self, klass: type[T]) -> T:
+        """Request a service instance, identified by its class.
 
-        Requesting uninitialized services is a :exc:`RuntimeError`
-        by default, unless `uninitialized_ok` is true.
+        Requesting uninitialized services is a :exc:`RuntimeError`.
         """
-        obj = self.services.get(klass)
-        if obj is None:
-            raise AttributeError(f"Unknown service type: {_clsname(klass)}")
-        if not (uninitialized_ok or obj in self.started):
-            raise RuntimeError(f"Service not initialized yet: {_clsname(klass)}")
+        if klass in self.started:
+            return self.started[klass]
+        if klass not in self.services:
+            raise RuntimeError(f"Unknown service type: {_clsname(klass)}")
+        raise RuntimeError(f"Service not started yet: {_clsname(klass)}")
+
+    async def use(self, klass: type[T]) -> T:
+        """Request a service instance and initialize it first, if necessary."""
+        async with self._start_lock:
+            return await self._start(klass)
+
+    async def _start(self, klass: type[T]) -> T:
+        """Initialize and return a service instance."""
+        if klass in self.started:
+            return self.started[klass]
+        if klass not in self.services:
+            raise RuntimeError(f"Unknown service type: {_clsname(klass)}")
+        if klass in self.starting:
+            raise RuntimeError(
+                f"Dependency loop: {'->'.join(map(_clsname, self.starting))}"
+            )
+        self.starting.append(klass)
+
+        LOG.debug(f"Starting: {_clsname(klass)}")
+
+        # Everyone depends on ServiceRegistry
+        if klass is not self.__class__:
+            self._depencency_graph.add((klass, self.__class__))
+
+        args = {}
+        factory = self.services[klass]
+
+        # Poor man's dependency injection
+        argsspec = inspect.signature(factory)
+        for param in argsspec.parameters.values():
+            deptype = param.annotation
+            # Require service dependency
+            args[param.name] = await self._start(deptype)
+            # Remember service dependency graph
+            self._depencency_graph.add((klass, deptype))
+
+        obj = typing.cast(T, factory(**args))
+        if not isinstance(obj, klass):
+            raise RuntimeError(
+                f"Unexpected class {type(obj)} returned from factory {factory}, expected {klass}"
+            )
+        if isinstance(obj, ManagedService):
+            await obj.on_start()
+
+        self.started[klass] = obj
+
+        _tmp = self.starting.pop()
+        if _tmp is not klass:
+            raise RuntimeError(f"Unexpected class on service start stack: {_tmp}")
+
         return obj
 
-    async def use(self, klass: type[T] = object) -> T:
-        """Request a service and initialize it, if necessary."""
-        obj = self.get(klass, uninitialized_ok=True)
-        if obj not in self.started:
-            await self._start(obj)
-        return obj
+    async def start_all(self):
+        """Initialize all services."""
+        for klass in self.services:
+            await self.use(klass)
 
-    async def _stop(self, obj):
-        """Un-initialize a service, if supported and required."""
-        assert obj in self.services.values()
-        if obj not in self.started:
+    async def _stop(self, klass):
+        """Un-initialize a service and all services that depend on it."""
+        assert klass in self.services
+        if klass not in self.started:
             return
 
         # Stop services that depend on the current service
         stop_first = [
             dependent
             for dependent, dependency in self._depencency_graph
-            if dependency == obj.__class__
+            if dependency == klass
         ]
         for stop in stop_first:
-            await self._stop(self.services[stop])
+            await self._stop(stop)
 
-        self.started.remove(obj)
-        LOG.debug(f"Stopping: {_clsname(obj)}")
+        LOG.debug(f"Stopping: {_clsname(klass)}")
+        obj = self.started.pop(klass)
         if isinstance(obj, ManagedService):
             await obj.on_shutdown()
 
-    async def _start(self, obj):
-        """Initialize a service, if supported and required."""
-        assert obj in self.services.values()
-        if obj in self.started:
-            return
-
-        self.started.append(obj)
-        LOG.debug(f"Starting: {_clsname(obj)}")
-
-        # Everyone depends on ServiceRegistry
-        if obj is not self:
-            self._depencency_graph.add((obj.__class__, self.__class__))
-
-        if isinstance(obj, ManagedService):
-            # Poor man's dependency injection
-            argsspec = inspect.signature(obj.on_start)
-            args = {}
-            for param in argsspec.parameters.values():
-                deptype = param.annotation
-                # Require service dependency
-                args[param.name] = await self.use(deptype)
-                # Remember service dependency graph
-                self._depencency_graph.add((obj.__class__, deptype))
-
-            await obj.on_start(**args)
-
 
 class ManagedService(ABC):
+    """
+    Classes implementing this interface are started when first requested
+    as a dependency or runtime service from ManagedService and stopped
+    on shutdown.
+    """
+
     @abstractmethod
     async def on_start(self):
-        """Called when the managed service is first requested.
-
-        The method can request dependencies by accepting arguments with
-        type annotations referencing other services. ManagedService
-        instances are started before they are passed to this method.
-        """
+        """Called directly after the managed service instance is created."""
         pass
 
     @abstractmethod
@@ -266,31 +307,18 @@ async def bootstrap(
     LOG.debug("Bootstrapping services...")
 
     ctx = ServiceRegistry()
-    ctx.register(config)
-    ctx.register(bbblb.services.health.HealthService(interval=config.POLL_INTERVAL))
-    ctx.register(
-        bbblb.services.db.DBContext(
-            config.DB,
-            create=config.DB_CREATE,
-            migrate=config.DB_MIGRATE,
-        ),
-    )
-    ctx.register(bbblb.services.bbb.BBBHelper())
-    ctx.register(bbblb.services.locks.LockManager())
-    ctx.register(
-        bbblb.services.poller.MeetingPoller(config),
-    )
-    ctx.register(
-        bbblb.services.recording.RecordingManager(config),
-    )
-    ctx.register(
-        bbblb.services.analytics.AnalyticsHandler(config),
-    )
-    ctx.register(bbblb.services.tenants.TenantCache(config))
+    ctx.register(BBBLBConfig, lambda: config)
+    ctx.register(bbblb.services.health.HealthService)
+    ctx.register(bbblb.services.db.DBContext)
+    ctx.register(bbblb.services.bbb.BBBHelper)
+    ctx.register(bbblb.services.locks.LockManager)
+    ctx.register(bbblb.services.poller.MeetingPoller)
+    ctx.register(bbblb.services.recording.RecordingManager)
+    ctx.register(bbblb.services.analytics.AnalyticsHandler)
+    ctx.register(bbblb.services.tenants.TenantCache)
 
     if autostart:
-        for service_type in ctx.services:
-            await ctx.use(service_type)
+        await ctx.start_all()
 
     LOG.debug("Bootstrapping completed!")
 

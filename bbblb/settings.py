@@ -1,6 +1,7 @@
 # Copyright (C) 2025, 2026  Marcel Hellkamp
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+from enum import Enum
 import os
 import logging
 from pathlib import Path
@@ -125,6 +126,11 @@ class BaseConfig:
                 return str(value).lower() in ("yes", "true", "1")
             elif tdef is Path and isinstance(value, (str, Path)):
                 return Path(value).resolve()
+            elif issubclass(tdef, Enum):
+                if isinstance(value, str):
+                    value = tdef[value]
+                if isinstance(value, tdef):
+                    return value
         else:
             raise ConfigError(f"Unable to convert between {type(value)} and {anno}")
 
@@ -270,6 +276,10 @@ class BBBLBConfig(BaseConfig):
 
     #: Enable debug and SQL logs
     DEBUG: bool = False
+
+    #: Internal. Set to False to disable certain background tasks (e.g.
+    #: recording importer, server health checks, ...).
+    WORKER: bool = True
 
     def populate(self, verify=True, strict=True):
         cfile = os.environ.get("BBBLB_CONFIG", None)

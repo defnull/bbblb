@@ -144,3 +144,8 @@ How often to retry webhooks if the target fails to respond.
 
 Enable debug and SQL logs
 
+``WORKER`` (type: ``bool``, default: ``True``)
+
+Internal. Set to False to disable certain background tasks (e.g.
+recording importer, server health checks, ...).
+

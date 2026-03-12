@@ -32,26 +32,26 @@ class ServerStats:
 
 
 class MeetingPoller(BackgroundService):
-    def __init__(self, config: BBBLBConfig):
+    def __init__(
+        self, config: BBBLBConfig, db: DBContext, locks: LockManager, bbb: BBBHelper
+    ):
         self.config = config
         self.interval = config.POLL_INTERVAL
         self.timeout = self.interval * 1.1
         self.maxerror = config.POLL_FAIL
         self.minsuccess = config.POLL_RECOVER
         self.stats_enabled = config.POLL_STATS
-
-        #: Start of a poll interval. Used as a common timestamp for all
-        #: MeetingStats entries created during a single poll run. This
-        #: allows later grouping by poll interval.
-        self._poll_start = 0.0
-
-    async def on_start(self, db: DBContext, locks: LockManager, bbb: BBBHelper):
         self.db = db
         self.lock = locks.create(
             "poller", datetime.timedelta(seconds=self.interval) * 2
         )
         self.bbb = bbb
-        await super().on_start()
+
+        #: Start of a poll interval. Used as a common timestamp for all
+        #: MeetingStats entries created during a single poll run. This
+        #: allows later grouping by poll interval.
+        self._poll_start = 0.0
+        self.is_worker = config.WORKER
 
     async def run(self):
         while True:
@@ -59,8 +59,9 @@ class MeetingPoller(BackgroundService):
                 # Short random sleep to give other proceses a chance
                 await asyncio.sleep(random.random() * self.interval)
 
-                # Run loop while holding the lock, or continue and try again
-                await self.lock.try_run_locked(self.poll_loop)
+                if self.is_worker:
+                    # Run loop while holding the lock, or continue and try again
+                    await self.lock.try_run_locked(self.poll_loop)
 
             except asyncio.CancelledError:
                 LOG.info("Poller shutting down...")

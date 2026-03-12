@@ -17,9 +17,12 @@ PROCESS_IDENTITY = f"{socket.gethostname()}-{os.getpid()}-{secrets.token_hex(4)}
 
 
 class LockManager(ManagedService):
-    async def on_start(self, db: DBContext):
+    def __init__(self, db: DBContext):
         self.db = db
+
+    async def on_start(self):
         LOG.debug(f"Log manager started with identity: {PROCESS_IDENTITY}")
+        await super().on_start()
 
     async def on_shutdown(self):
         LOG.debug("Log manager shutdown. Releasing locks...")

@@ -23,11 +23,11 @@ JWT_ALGORITHMS = ["HS256", "HS384", "HS512"]
 
 
 class BBBHelper(BackgroundService):
-    async def on_start(self, config: BBBLBConfig, db: DBContext):
+    def __init__(self, config: BBBLBConfig, db: DBContext):
         self.config = config
         self.db = db
         self.connector = aiohttp.TCPConnector(limit_per_host=10)
-        await super().on_start()
+        self.is_worker = config.WORKER
 
     async def on_shutdown(self):
         if self.connector and not self.connector.closed:
@@ -36,8 +36,9 @@ class BBBHelper(BackgroundService):
 
     async def run(self):
         while True:
-            await self._cleanup_old_callbacks()
-            await self._cleanup_stale_meetings()
+            if self.is_worker:
+                await self._cleanup_old_callbacks()
+                await self._cleanup_stale_meetings()
             await asyncio.sleep(600)
 
     async def _cleanup_old_callbacks(self, max_age=timedelta(days=30)):
