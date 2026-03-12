@@ -59,7 +59,7 @@ async def _delete(obj: ServiceRegistry, record_id):
 @async_command()
 async def publish(obj: ServiceRegistry, record_id):
     """Publish recordings"""
-    await _change_publish_flag(obj, record_id, model.RecordingState.PUBLISHED)
+    await _change_publish_flag(obj, [record_id], model.RecordingState.PUBLISHED)
 
 
 @recording.command()
@@ -67,11 +67,11 @@ async def publish(obj: ServiceRegistry, record_id):
 @async_command()
 async def unpublish(obj: ServiceRegistry, record_id):
     """Unpublish recordings"""
-    await _change_publish_flag(obj, record_id, model.RecordingState.UNPUBLISHED)
+    await _change_publish_flag(obj, [record_id], model.RecordingState.UNPUBLISHED)
 
 
 async def _change_publish_flag(
-    obj: ServiceRegistry, record_id, state: model.RecordingState
+    obj: ServiceRegistry, record_id: list[str], state: model.RecordingState
 ):
     importer = await obj.use(RecordingManager)
     db = await obj.use(DBContext)
