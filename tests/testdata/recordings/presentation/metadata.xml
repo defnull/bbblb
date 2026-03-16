@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<recording>
+  <id>cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370924</id>
+  <state>published</state>
+  <published>true</published>
+  <start_time>1761640370924</start_time>
+  <end_time>1761640601447</end_time>
+  <participants>1</participants>
+  <meeting id="cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370924" externalId="foo-bbblb-test" name="bar" breakout="false"/>
+  <breakout/>
+  <breakoutRooms>
+    <breakoutRoom>5cc6265a4f3ed558ee0699cdc20c90dd3244072a-1761640445820</breakoutRoom>
+    <breakoutRoom>1640afd45e779bd06a126b7dc4796b00e5d730bb-1761640445820</breakoutRoom>
+  </breakoutRooms>
+  <meta>
+    <bbblb-tenant>test</bbblb-tenant>
+    <isBreakout>false</isBreakout>
+    <meetingId>foo-bbblb-test</meetingId>
+    <meetingName>bar</meetingName>
+  </meta>
+  <playback>
+    <format>presentation</format>
+    <link>https://bbb.example.com/playback/presentation/2.3/cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370924</link>
+    <processing_time>56734</processing_time>
+    <duration>196310</duration>
+    <extensions>
+      <preview>
+        <images>
+          <image width="176" height="136" alt="Test Preview">https://bbb.example.com/presentation/cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370924/presentation/0be1d53b8cc27d94d621b06d9171f0b35e6c0dad-1645733919254/thumbnails/thumb-1.png</image>
+        </images>
+      </preview>
+    </extensions>
+    <size>2743009</size>
+  </playback>
+  <raw_size>7065387</raw_size>
+</recording>

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<recording>
+  <id>cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370925</id>
+  <state>available</state>
+  <published>true</published>
+  <start_time>1761640370924</start_time>
+  <end_time>1761640601447</end_time>
+  <participants>1</participants>
+  <playback>
+    <format>video</format>
+    <link>https://bbb.example.com/playback/video/cbfc42d51bf51f537652bdc9c8acaa15da061e67-1761640370925/</link>
+    <duration>196310</duration>
+    <size>2237002</size>
+  </playback>
+  <meta>
+    <bbblb-tenant>test</bbblb-tenant>
+    <isBreakout>false</isBreakout>
+    <meetingId>foo-bbblb-test</meetingId>
+    <meetingName>bar</meetingName>
+  </meta>
+  <raw_size>7065387</raw_size>
+</recording>

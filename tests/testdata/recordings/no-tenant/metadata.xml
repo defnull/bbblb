@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<recording>
+  <id>3b0f8c839ae046f70e875142d1d1f446d3907e01-1645733904879</id>
+  <state>published</state>
+  <published>true</published>
+  <start_time>1645733904879</start_time>
+  <end_time>1645733938837</end_time>
+  <participants>1</participants>
+  <meeting id="3b0f8c839ae046f70e875142d1d1f446d3907e01-1645733904879" externalId="yjt2ig64atbl3pphjjwbpgdtdqwsvoumwpz8mxs6" name="Testraum (rec)" breakout="false"/>
+  <meta>
+    <bbb-origin>Greenlight</bbb-origin>
+    <bbb-origin-server-name>bbb.example.com</bbb-origin-server-name>
+    <bbb-origin-version/>
+    <gl-listed>false</gl-listed>
+    <isBreakout>false</isBreakout>
+    <meetingId>yjt2ig64atbl3pphjjwbpgdtdqwsvoumwpz8mxs6</meetingId>
+    <meetingName>Testraum (rec)</meetingName>
+  </meta>
+  <playback>
+    <format>presentation</format>
+    <link>https://bbb.example.com/playback/presentation/2.3/3b0f8c839ae046f70e875142d1d1f446d3907e01-1645733904879</link>
+    <processing_time>4649</processing_time>
+    <duration>4772</duration>
+    <extensions>
+      <preview>
+        <images>
+          <image width="176" height="136" alt="Test Preview">https://bbb.example.com/presentation/3b0f8c839ae046f70e875142d1d1f446d3907e01-1645733904879/presentation/0be1d53b8cc27d94d621b06d9171f0b35e6c0dad-1645733919254/thumbnails/thumb-1.png</image>
+        </images>
+      </preview>
+    </extensions>
+    <size>308854</size>
+  </playback>
+  <raw_size>3694012</raw_size>
+</recording>

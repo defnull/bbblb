@@ -3,6 +3,7 @@
 
 import logging
 import os
+from pathlib import Path
 import pytest
 import pytest_asyncio
 import bbblb.model
@@ -15,6 +16,14 @@ from starlette.testclient import TestClient
 
 ENV_TEST_DB = "TEST_DB"
 ENV_TEST_BBB = "TEST_BBB"
+
+
+def get_testdata(*names) -> Path:
+    datadir = Path(__file__).resolve().parent / "testdata"
+    target = datadir.joinpath(*names).resolve()
+    if not target.exists():
+        pytest.skip(f"Test requires test data in {target}")
+    return target
 
 
 @pytest.fixture(scope="session")
