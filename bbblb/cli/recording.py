@@ -26,11 +26,15 @@ async def _list(obj: ServiceRegistry):
     """List all recordings and their formats"""
     db = await obj.use(DBContext)
     async with db.session() as session, session.begin():
-        stmt = model.Recording.select().options(
-            sqlalchemy.orm.joinedload(model.Recording.tenant),
-            sqlalchemy.orm.selectinload(model.Recording.formats),
+        stmt = (
+            model.Recording.select()
+            .options(
+                sqlalchemy.orm.joinedload(model.Recording.tenant),
+                sqlalchemy.orm.selectinload(model.Recording.formats),
+            )
+            .execution_options(yield_per=100)
         )
-        for record in (await session.execute(stmt)).scalars():
+        async for record in await session.stream_scalars(stmt):
             click.echo(
                 f"{record.tenant.name} {record.record_id} {','.join(f.format for f in record.formats)}"
             )
