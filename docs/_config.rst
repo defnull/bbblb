@@ -1,3 +1,10 @@
+``CONFIG`` (type: ``Path|None``, default: ``None``)
+
+A shell or .env style (KEY=VALUE) config file with one option per
+line. If the CONFIG option is defined (via environment variables or
+explicitly during initialization) then this file is loaded and parsed.
+Its content will overwrite other values or defaults.
+
 ``DOMAIN`` (type: ``str``, **REQUIRED**)
 
 Primary domain for this service. This will be added as bbblb-origin
@@ -9,7 +16,7 @@ to get back at bbblb from the BBB nodes.
 Secret used to sign and verify API credentials and protected callbacks.
 This is NOT your BBB API secret.
 
-``DB`` (type: ``str``, default: ``"sqlite:////usr/share/bbblb/sqlite.db"``)
+``DB`` (type: ``str``, default: ``'sqlite:////usr/share/bbblb/sqlite.db'``)
 
 An sqlalchemy compatible database connection string, starting with either
 `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
@@ -23,44 +30,45 @@ Create database if it does not exist on startup (postgres only).
 
 Run database schema migrations automatically on startup.
 
-``PATH_DATA`` (type: ``Path``, default: ``Path("/usr/share/bbblb/")``)
+``PATH_DATA`` (type: ``Path``, default: ``'/usr/share/bbblb'``)
 
 The directory where BBBLB stores all its persistent data, including
 recordings, lockfiles, logs and more. Must be fully write-able for BBBLB
 and the `{PATH_DATA}/recordings` sub-directory must also be read-able by
 your front-end HTTP server, if used. See docs/recording.md for details.
 
-``TENANT_HEADER`` (type: ``str``, default: ``"Host"``)
+``TENANT_HEADER`` (type: ``str``, default: ``'Host'``)
 
-For each BBB API request, the value of this header is matched against the
-tenant realms to find the correct tenant. This defaults to the `Host`
+For each BBB API request, the value of this header is matched against
+the tenant realms to find the correct tenant. This defaults to the `Host`
 header, which means each tenant needs to use a different (sub-)domain to
 reach BBBLB.
 
 ``TENANT_CACHE`` (type: ``int``, default: ``10``)
 
-Cache tenant info for a couple of seconds before requesting fresh info from the
-database. Even a short cache time improves API latency by a lot. The only downside
-is that tenant changes (e.g. new secret) may take a couple of seconds to take
-effect.
+Cache tenant info for a couple of seconds before requesting fresh info
+from the database. Even a short cache time improves API latency by a lot.
+The only downside is that tenant changes (e.g. new secret) may take a
+couple of seconds to take effect.
 
 ``SCOPED_MEETING_IDS`` (type: ``bool``, default: ``True``)
 
-If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
-tenants. API clients will still see the unmodified meeting ID, but the scoped
-ID may end up in recording metadata and logs.
+If true, meeting IDs are scoped with the tenant ID to avoid conflicts
+between tenants. API clients will still see the unmodified meeting ID,
+but the scoped ID may end up in recording metadata and logs.
 
 ``RECORDING_THREADS`` (type: ``int``, default: ``1``)
 
-Maximum number of import tasks to perform at the same timer. It is usually
-not a good idea to increase this too much.
+Maximum number of import tasks to perform at the same timer. It
+is usually not a good idea to increase this too much.
 
 ``RECORDING_IMPORT_UNPUBLISHED`` (type: ``bool``, default: ``False``)
 
-BBB publishes new recordings by default. If this setting is True, then BBBLB will
-import new recordings as 'unpublished' regardless of their original state.
+BBB publishes new recordings by default. If this setting is True,
+then BBBLB will import new recordings as 'unpublished' regardless of
+their original state.
 
-``PLAYBACK_DOMAIN`` (type: ``str``, default: ``"{DOMAIN}"``)
+``PLAYBACK_DOMAIN`` (type: ``str``, default: ``'{DOMAIN}'``)
 
 Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
 can be used to refer to the global DOMAIN config, or the realm of the
@@ -68,28 +76,29 @@ current tenant.
 
 ``POLL_INTERVAL`` (type: ``int``, default: ``30``)
 
-Poll interval in seconds for the background server health and meeting checker.
-This also defines the timeout for each individual poll, and changes how quickly
-the POLL_FAIL and POLL_RECOVER watermarks can be reached. The interval should be
-between 10 (fast) and 60 (very slow) depending on the size of your cluster.
+Poll interval in seconds for the background server health and meeting
+checker. This also defines the timeout for each individual poll, and
+changes how quickly the POLL_FAIL and POLL_RECOVER watermarks can be
+reached. The interval should be between 10 (fast) and 60 (very slow)
+depending on the size of your cluster.
 
 ``POLL_FAIL`` (type: ``int``, default: ``3``)
 
-Number of failed create calls or health checks after which we give up on an
-UNSTABLE server and mark it as OFFLINE. All remaining meetings are dropped,
-so they can be re-created on another server.
+Number of failed create calls or health checks after which we give
+up on an UNSTABLE server and mark it as OFFLINE. All remaining meetings
+are dropped, so they can be re-created on another server.
 
 ``POLL_RECOVER`` (type: ``int``, default: ``5``)
 
-Number of successfull health checks in a row after which an OFFLINE or UNSTABLE
-server is considered to be AVAILABLE again.
+Number of successfull health checks in a row after which an OFFLINE
+or UNSTABLE server is considered to be AVAILABLE again.
 
 ``POLL_STATS`` (type: ``bool``, default: ``False``)
 
 Log meeting statistics into a database table.
-WARNING! There is no automatic cleanup! The table will grow by one row per
-meeting per `POLL_INTERVAL`. Make sure your database can handle it and won't
-slowly fill up your entire disk.
+WARNING! There is no automatic cleanup! The table will grow by one row
+per meeting per `POLL_INTERVAL`. Make sure your database can handle
+it and won't slowly fill up your entire disk.
 
 ``LOAD_BASE`` (type: ``float``, default: ``5.0``)
 
@@ -136,7 +145,7 @@ BBB is configured with defaultKeepEvents=true in bbb-web.properties.
 Maximum number of meetings or recordings to return from APIs that
 potentially return an unlimited amount of data.
 
-``MAX_BODY`` (type: ``int``, default: ``1024 * 1024``)
+``MAX_BODY`` (type: ``int``, default: ``1048576``)
 
 Maximum body size for BBB API requests, both front-end and back-end.
 This does not affect presentation uploads, so 1MB should be plenty.
@@ -147,7 +156,7 @@ How often to retry webhooks if the target fails to respond.
 
 ``DEBUG`` (type: ``bool``, default: ``False``)
 
-Enable debug and SQL logs
+Enable debug and SQL logs.
 
 ``WORKER`` (type: ``bool``, default: ``True``)
 

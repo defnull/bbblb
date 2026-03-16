@@ -25,11 +25,11 @@ MISSING = _MissingValue()
 
 
 class BaseConfig:
-    #: A shell or .env style (KEY=VALUE) config file with one option per line.
-    #: If the CONFIG option is defined (via environment variables or explicitly
-    #: during initialization) then this file is loaded and parsed. Its content
-    #: will overwrite other values or defaults.
     CONFIG: Path | None = None
+    """ A shell or .env style (KEY=VALUE) config file with one option per
+    line. If the CONFIG option is defined (via environment variables or
+    explicitly during initialization) then this file is loaded and parsed.
+    Its content will overwrite other values or defaults. """
 
     def __init__(self):
         self._options = {
@@ -54,7 +54,8 @@ class BaseConfig:
         return func
 
     def itersources(self):
-        """Yield (name, value, source) tuples for everything in this config object"""
+        """Yield (name, value, source) tuples for everything in this
+        config object"""
         for name in sorted(self._options):
             yield name, getattr(self, name), self._source[name]
 
@@ -157,133 +158,137 @@ class BaseConfig:
 
 
 class BBBLBConfig(BaseConfig):
-    #: Primary domain for this service. This will be added as bbblb-origin
-    #: metadata to meetings and is used by e.g. the recording upload script
-    #: to get back at bbblb from the BBB nodes.
     DOMAIN: str
+    """ Primary domain for this service. This will be added as bbblb-origin
+    metadata to meetings and is used by e.g. the recording upload script
+    to get back at bbblb from the BBB nodes. """
 
-    #: Secret used to sign and verify API credentials and protected callbacks.
-    #: This is NOT your BBB API secret.
     SECRET: str
+    """ Secret used to sign and verify API credentials and protected callbacks.
+    This is NOT your BBB API secret. """
 
-    #: An sqlalchemy compatible database connection string, starting with either
-    #: `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
-    #: or `postgresql://user:pass@host/name`.
     DB: str = "sqlite:////usr/share/bbblb/sqlite.db"
+    """ An sqlalchemy compatible database connection string, starting with either
+    `sqlite://` or `postgresql://`. For example `sqlite:////path/to/file.db`
+    or `postgresql://user:pass@host/name`. """
 
-    #: Create database if it does not exist on startup (postgres only).
     DB_CREATE: bool = True
+    """ Create database if it does not exist on startup (postgres only). """
 
-    #: Run database schema migrations automatically on startup.
     DB_MIGRATE: bool = True
+    """ Run database schema migrations automatically on startup. """
 
-    #: The directory where BBBLB stores all its persistent data, including
-    #: recordings, lockfiles, logs and more. Must be fully write-able for BBBLB
-    #: and the `{PATH_DATA}/recordings` sub-directory must also be read-able by
-    #: your front-end HTTP server, if used. See docs/recording.md for details.
     PATH_DATA: Path = Path("/usr/share/bbblb/")
+    """ The directory where BBBLB stores all its persistent data, including
+    recordings, lockfiles, logs and more. Must be fully write-able for BBBLB
+    and the `{PATH_DATA}/recordings` sub-directory must also be read-able by
+    your front-end HTTP server, if used. See docs/recording.md for details. """
 
-    #: For each BBB API request, the value of this header is matched against the
-    #: tenant realms to find the correct tenant. This defaults to the `Host`
-    #: header, which means each tenant needs to use a different (sub-)domain to
-    #: reach BBBLB.
     TENANT_HEADER: str = "Host"
+    """ For each BBB API request, the value of this header is matched against
+    the tenant realms to find the correct tenant. This defaults to the `Host`
+    header, which means each tenant needs to use a different (sub-)domain to
+    reach BBBLB. """
 
-    #: Cache tenant info for a couple of seconds before requesting fresh info from the
-    #: database. Even a short cache time improves API latency by a lot. The only downside
-    #: is that tenant changes (e.g. new secret) may take a couple of seconds to take
-    #: effect.
     TENANT_CACHE: int = 10
+    """ Cache tenant info for a couple of seconds before requesting fresh info
+    from the database. Even a short cache time improves API latency by a lot.
+    The only downside is that tenant changes (e.g. new secret) may take a
+    couple of seconds to take effect. """
 
-    #: If true, meeting IDs are scoped with the tenant ID to avoid conflicts between
-    #: tenants. API clients will still see the unmodified meeting ID, but the scoped
-    #: ID may end up in recording metadata and logs.
     SCOPED_MEETING_IDS: bool = True
+    """ If true, meeting IDs are scoped with the tenant ID to avoid conflicts
+    between tenants. API clients will still see the unmodified meeting ID,
+    but the scoped ID may end up in recording metadata and logs. """
 
-    #: Maximum number of import tasks to perform at the same timer. It is usually
-    #: not a good idea to increase this too much.
     RECORDING_THREADS: int = 1
+    """ Maximum number of import tasks to perform at the same timer. It
+    is usually not a good idea to increase this too much. """
 
-    #: BBB publishes new recordings by default. If this setting is True, then BBBLB will
-    #: import new recordings as 'unpublished' regardless of their original state.
     RECORDING_IMPORT_UNPUBLISHED: bool = False
+    """ BBB publishes new recordings by default. If this setting is True,
+    then BBBLB will import new recordings as 'unpublished' regardless of
+    their original state. """
 
-    #: Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
-    #: can be used to refer to the global DOMAIN config, or the realm of the
-    #: current tenant.
     PLAYBACK_DOMAIN: str = "{DOMAIN}"
+    """ Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
+    can be used to refer to the global DOMAIN config, or the realm of the
+    current tenant. """
 
-    #: Poll interval in seconds for the background server health and meeting checker.
-    #: This also defines the timeout for each individual poll, and changes how quickly
-    #: the POLL_FAIL and POLL_RECOVER watermarks can be reached. The interval should be
-    #: between 10 (fast) and 60 (very slow) depending on the size of your cluster.
     POLL_INTERVAL: int = 30
+    """ Poll interval in seconds for the background server health and meeting
+    checker. This also defines the timeout for each individual poll, and
+    changes how quickly the POLL_FAIL and POLL_RECOVER watermarks can be
+    reached. The interval should be between 10 (fast) and 60 (very slow)
+    depending on the size of your cluster. """
 
-    #: Number of failed create calls or health checks after which we give up on an
-    #: UNSTABLE server and mark it as OFFLINE. All remaining meetings are dropped,
-    #: so they can be re-created on another server.
     POLL_FAIL: int = 3
+    """ Number of failed create calls or health checks after which we give
+    up on an UNSTABLE server and mark it as OFFLINE. All remaining meetings
+    are dropped, so they can be re-created on another server. """
 
-    #: Number of successfull health checks in a row after which an OFFLINE or UNSTABLE
-    #: server is considered to be AVAILABLE again.
     POLL_RECOVER: int = 5
+    """ Number of successfull health checks in a row after which an OFFLINE
+    or UNSTABLE server is considered to be AVAILABLE again. """
 
-    #: Log meeting statistics into a database table.
-    #: WARNING! There is no automatic cleanup! The table will grow by one row per
-    #: meeting per `POLL_INTERVAL`. Make sure your database can handle it and won't
-    #: slowly fill up your entire disk.
     POLL_STATS: bool = False
+    """ Log meeting statistics into a database table.
+    WARNING! There is no automatic cleanup! The table will grow by one row
+    per meeting per `POLL_INTERVAL`. Make sure your database can handle
+    it and won't slowly fill up your entire disk. """
 
-    #: Base load counted for each meeting.
     LOAD_BASE: float = 5.0
+    """ Base load counted for each meeting. """
 
-    #: Additional load counted for each user in a meeting.
     LOAD_USER: float = 1.0
+    """ Additional load counted for each user in a meeting. """
 
-    #: Additional load counted for each voice user in a meeting.
     LOAD_VOICE: float = 0.5
+    """ Additional load counted for each voice user in a meeting. """
 
-    #: Additional load counted for each video user in a meeting.
     LOAD_VIDEO: float = 0.5
+    """ Additional load counted for each video user in a meeting. """
 
-    #: Reserved seats for new meetings.
-    #: When new meetings are created, their final user count is still
-    #: unknown. To avoid uneven meeting distribution during peaks hours,
-    #: we reserve up to LOAD_RESERVED seats for additional users that are
-    #: likely to join during the first LOAD_COOLDOWN minutes of a new
-    #: meeting.
-    #: The number of reserved seats will slowly decrease over time until
-    #: LOAD_COOLDOWN minutes have passed.
     LOAD_RESERVED: float = 20.0
+    """ Reserved seats for new meetings.
+    When new meetings are created, their final user count is still
+    unknown. To avoid uneven meeting distribution during peaks hours,
+    we reserve up to LOAD_RESERVED seats for additional users that are
+    likely to join during the first LOAD_COOLDOWN minutes of a new
+    meeting.
+    The number of reserved seats will slowly decrease over time until
+    LOAD_COOLDOWN minutes have passed. """
 
-    #: Number of minutes after which new meetings are no longer impacted
-    #: by LOAD_RESERVED. The accounted number of reserved seats
-    #: decreases linearly over time.
     LOAD_COOLDOWN: float = 30.0
+    """ Number of minutes after which new meetings are no longer impacted
+    by LOAD_RESERVED. The accounted number of reserved seats
+    decreases linearly over time. """
 
-    #: If true, BBBLB will intercept the analytics-callback-url webhook
-    #: and dump json files into the {PATH_DATA}/analytics/{tenant}/
-    #: folder for later analysis (WIP). The callback is only fired if
-    #: BBB is configured with defaultKeepEvents=true in bbb-web.properties.
     ANALYTICS_STORE: bool = False
+    """ If true, BBBLB will intercept the analytics-callback-url webhook
+    and dump json files into the {PATH_DATA}/analytics/{tenant}/
+    folder for later analysis (WIP). The callback is only fired if
+    BBB is configured with defaultKeepEvents=true in bbb-web.properties.
+    """
 
-    #: Maximum number of meetings or recordings to return from APIs that
-    #: potentially return an unlimited amount of data.
     MAX_ITEMS: int = 1000
+    """ Maximum number of meetings or recordings to return from APIs that
+    potentially return an unlimited amount of data. """
 
-    #: Maximum body size for BBB API requests, both front-end and back-end.
-    #: This does not affect presentation uploads, so 1MB should be plenty.
     MAX_BODY: int = 1024 * 1024
+    """ Maximum body size for BBB API requests, both front-end and back-end.
+    This does not affect presentation uploads, so 1MB should be plenty.
+    """
 
-    #: How often to retry webhooks if the target fails to respond.
     WEBHOOK_RETRY: int = 3
+    """ How often to retry webhooks if the target fails to respond. """
 
-    #: Enable debug and SQL logs
     DEBUG: bool = False
+    """ Enable debug and SQL logs. """
 
-    #: Internal. Set to False to disable certain background tasks (e.g.
-    #: recording importer, server health checks, ...).
     WORKER: bool = True
+    """ Internal. Set to False to disable certain background tasks (e.g.
+    recording importer, server health checks, ...). """
 
     def populate(self, verify=True, strict=True):
         cfile = os.environ.get("BBBLB_CONFIG", None)
