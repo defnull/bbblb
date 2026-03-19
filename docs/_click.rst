@@ -205,6 +205,16 @@ recording list
 
 List all recordings and their formats
 
+.. table:: Options
+  :width: 100%
+
+  =============  ================
+  Option         Help            
+  =============  ================
+  --tenant TEXT  Filter by tenant
+  --format TEXT  Filter by format
+  =============  ================
+
 recording delete
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

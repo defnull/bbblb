@@ -21,22 +21,32 @@ async def recording(obj: ServiceRegistry):
 
 
 @recording.command("list")
+@click.option("--tenant", help="Filter by tenant")
+@click.option("--format", help="Filter by format")
 @async_command()
-async def _list(obj: ServiceRegistry):
+async def _list(obj: ServiceRegistry, tenant: str, format: str):
     """List all recordings and their formats"""
     db = await obj.use(DBContext)
     async with db.session() as session, session.begin():
         stmt = (
             model.Recording.select()
-            .options(
-                sqlalchemy.orm.joinedload(model.Recording.tenant),
-                sqlalchemy.orm.selectinload(model.Recording.formats),
-            )
-            .execution_options(yield_per=100)
+            .join(model.Recording.tenant)
+            .options(sqlalchemy.orm.contains_eager(model.Recording.tenant))
         )
+        if tenant:
+            stmt = stmt.where(model.Tenant.name == tenant)
+        if format:
+            stmt = stmt.where(
+                model.Recording.formats.any(model.PlaybackFormat.format == format)
+            )
         async for record in await session.stream_scalars(stmt):
+            format_names = (
+                [format]
+                if format
+                else [f.format for f in await record.awaitable_attrs.formats]
+            )
             click.echo(
-                f"{record.tenant.name} {record.record_id} {','.join(f.format for f in record.formats)}"
+                f"{record.tenant.name} {record.record_id} {record.state} {','.join(format_names)}"
             )
 
 
