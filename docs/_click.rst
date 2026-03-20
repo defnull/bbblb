@@ -295,11 +295,9 @@ your database backup is missing a few recordings.
 
 Warning, this command may run for a while and consume a lot of memory
 if you have many recordings. It is also NOT safe to run this command
-while BBBLB running and processing new recordings. Stop all BBBLB
-API and worker processes before running this command with enabled
-fixes. Make backups first.
-
-The command
+while BBBLB is running and processing new recordings. Stop all BBBLB
+API and worker processes before starting a scan, especially with
+fixes enabled. Make backups!
 
 .. table:: Options
   :width: 100%
