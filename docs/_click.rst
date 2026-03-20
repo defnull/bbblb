@@ -187,16 +187,16 @@ Recording management.
 .. table:: Sub-Commands
   :width: 100%
 
-  ==============  ======================================================
-  Command         Help                                                  
-  ==============  ======================================================
-  list            List all recordings and their formats                 
-  delete          Delete recordings (all formats)                       
-  publish         Publish recordings                                    
-  unpublish       Unpublish recordings                                  
-  import          Import one or more recordings from a tar archive      
-  remove-orphans  Remove recording DB entries that do not exist on disk.
-  ==============  ======================================================
+  ==============  ============================================================================
+  Command         Help                                                                        
+  ==============  ============================================================================
+  list            List all recordings and their formats                                       
+  delete          Delete recordings (all formats)                                             
+  publish         Publish recordings                                                          
+  unpublish       Unpublish recordings                                                        
+  import          Import one or more recordings from a tar archive                            
+  check-database  (experimental) Report and optionally fix issues with the recording database.
+  ==============  ============================================================================
 
 recording list
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -281,21 +281,40 @@ Import one or more recordings from a tar archive
   FILE                     Optional argument                          
   =======================  ===========================================
 
-recording remove-orphans
+recording check-database
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``Usage: bbblb recording remove-orphans [OPTIONS]``
+``Usage: bbblb recording check-database [OPTIONS]``
 
-Remove recording DB entries that do not exist on disk.
+(experimental) Report and optionally fix issues with the recording database.
+
+This command scans the actual recording data found on disk and
+checks for missing or inconsistent database entries. It can be used
+to repair or rebuild the recordings database after a crash or when
+your database backup is missing a few recordings.
+
+Warning, this command may run for a while and consume a lot of memory
+if you have many recordings. It is also NOT safe to run this command
+while BBBLB running and processing new recordings. Stop all BBBLB
+API and worker processes before running this command with enabled
+fixes. Make backups first.
+
+The command
 
 .. table:: Options
   :width: 100%
 
-  =============  ======================================
-  Option         Help                                  
-  =============  ======================================
-  -n, --dry-run  Do not actually remove any recordings.
-  =============  ======================================
+  ==============  ============================================================================================
+  Option          Help                                                                                        
+  ==============  ============================================================================================
+  --prefix TEXT   Only scan recording with IDs starting with this prefix.  [default: ""]                      
+  --fix-orphans   Remove recordings or formats that do not exist on disk.                                     
+  --fix-missing   Import missing recordings or formats found on disk.                                         
+  --fix-state     Fix the published/unpublished state of recordings to match the on-disk state.               
+  --fix-tenant    Fix the recording owner to match their on-disk storage path, which contains the tenant name.
+  --fix-metadata  (NOT IMPLEMENTED) Fix the recording metadata from the most recend on-disk backup.           
+  --fix-all       Fix everything that can be fixed automatically.                                             
+  ==============  ============================================================================================
 
 server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

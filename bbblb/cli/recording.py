@@ -1,6 +1,9 @@
 # Copyright (C) 2025, 2026  Marcel Hellkamp
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+
+import sys
+
 import click
 import sqlalchemy.orm
 
@@ -8,7 +11,7 @@ from bbblb import model
 
 from bbblb.services import ServiceRegistry
 from bbblb.services.db import DBContext
-from bbblb.services.recording import RecordingManager
+from bbblb.services.recording import RecordingManager, ConsistencyChecker, FixCategory
 
 from . import main, async_command
 
@@ -137,40 +140,75 @@ async def _import(obj: ServiceRegistry, tenant: str, publish: bool | None, file:
 
 @recording.command()
 @click.option(
-    "--dry-run", "-n", help="Do not actually remove any recordings.", is_flag=True
+    "--prefix",
+    help="Only scan recording with IDs starting with this prefix.",
+    default="",
+)
+@click.option(
+    "--fix-orphans",
+    help="Remove recordings or formats that do not exist on disk.",
+    is_flag=True,
+)
+@click.option(
+    "--fix-missing",
+    help="Import missing recordings or formats found on disk.",
+    is_flag=True,
+)
+@click.option(
+    "--fix-state",
+    help="Fix the published/unpublished state of recordings to match the on-disk state.",
+    is_flag=True,
+)
+@click.option(
+    "--fix-tenant",
+    help="Fix the recording owner to match their on-disk storage path, which contains the tenant name.",
+    is_flag=True,
+)
+@click.option(
+    "--fix-metadata",
+    help="(NOT IMPLEMENTED) Fix the recording metadata from the most recend on-disk backup.",
+    is_flag=True,
+)
+@click.option(
+    "--fix-all", help="Fix everything that can be fixed automatically.", is_flag=True
 )
 @async_command()
-async def remove_orphans(obj: ServiceRegistry, dry_run: bool):
-    """Remove recording DB entries that do not exist on disk."""
-    db = await obj.use(DBContext)
-    importer = await obj.use(RecordingManager)
-    async with db.session() as session, session.begin():
-        stmt = model.Recording.select().options(
-            sqlalchemy.orm.joinedload(model.Recording.tenant),
-            sqlalchemy.orm.selectinload(model.Recording.formats),
-        )
-        records = await session.execute(stmt)
-        for record in records.scalars():
-            populated = False
-            for format in record.formats:
-                sdir = importer.get_storage_dir(
-                    record.tenant.name,
-                    record.record_id,
-                    format.format,
-                )
-                if sdir.exists():
-                    populated = True
-                    continue
-                click.echo(
-                    f"Deleting orphan format: {record.tenant.name}/{record.record_id}/{format.format}"
-                )
-                await session.delete(format)
-            if not populated:
-                click.echo(
-                    f"Deleting record without formats: {record.tenant.name}/{record.record_id}"
-                )
-                await session.delete(record)
+async def check_database(
+    obj: ServiceRegistry,
+    prefix: str,
+    fix_orphans: bool,
+    fix_missing: bool,
+    fix_state: bool,
+    fix_tenant: bool,
+    fix_metadata: bool,
+    fix_all: bool,
+):
+    """(experimental) Report and optionally fix issues with the recording database.
 
-        if dry_run:
-            click.echo("Rolling back changes (dry run)")
-            await session.rollback()
+    This command scans the actual recording data found on disk and
+    checks for missing or inconsistent database entries. It can be used
+    to repair or rebuild the recordings database after a crash or when
+    your database backup is missing a few recordings.
+
+    Warning, this command may run for a while and consume a lot of memory
+    if you have many recordings. It is also NOT safe to run this command
+    while BBBLB running and processing new recordings. Stop all BBBLB
+    API and worker processes before running this command with enabled
+    fixes. Make backups first.
+
+    The command
+    """
+    autofix: set[FixCategory] = set()
+    if fix_orphans or fix_all:
+        autofix.add(FixCategory.ORPHAN)
+    if fix_missing or fix_all:
+        autofix.add(FixCategory.MISSING)
+    if fix_state or fix_all:
+        autofix.add(FixCategory.PUB_STATE)
+    if fix_tenant or fix_all:
+        autofix.add(FixCategory.TENANT)
+
+    importer = await obj.use(RecordingManager)
+    recovery = ConsistencyChecker(importer, autofix)
+    await recovery.scan(prefix=prefix)
+    sys.exit(1 if recovery.unfixed_issues else 0)

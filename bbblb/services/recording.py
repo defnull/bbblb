@@ -5,6 +5,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import contextvars
 import datetime
+import enum
 import functools
 from functools import cached_property
 import logging
@@ -92,6 +93,34 @@ def _sanity_pathname(name: str):
         if bad in name:
             raise ValueError(f"Unexpected character in path name: {name!r}")
     return name
+
+
+def _record_from_metadata(metadata_xml: "FormatXMLWrapper", tenant: model.Tenant):
+    meta_dict = dict(metadata_xml.meta)
+    meta_dict["meetingId"] = metadata_xml.unscoped_id
+
+    return model.Recording(
+        tenant=tenant,
+        record_id=metadata_xml.record_id,
+        external_id=metadata_xml.unscoped_id,
+        state=(
+            model.RecordingState.PUBLISHED
+            if metadata_xml.published
+            else model.RecordingState.UNPUBLISHED
+        ),
+        started=metadata_xml.started,
+        ended=metadata_xml.ended,
+        participants=metadata_xml.participants,
+        meta=meta_dict,
+    )
+
+
+def _format_from_metadata(metadata_xml: "FormatXMLWrapper", recording: model.Recording):
+    return model.PlaybackFormat(
+        recording=recording,
+        format=metadata_xml.format,
+        xml=lxml.etree.tostring(metadata_xml.playback_node).decode("UTF-8"),
+    )
 
 
 class FormatXMLWrapper:
@@ -491,9 +520,6 @@ class RecordingImportTask:
         finally:
             self.import_done.set()
 
-    def __str__(self):
-        return f"{self.__class__.__name__}({self.import_id})"
-
     async def _run(self):
         # Claim the task directory atomically and give up if it already exists,
         # so only one task will work on this import at any given time.
@@ -623,19 +649,7 @@ class RecordingImportTask:
 
         # Extract more info info from metadata.xml
         tenant_name = self.force_tenant or metadata.bbblb_tenant
-        record_id = metadata.record_id
         format_name = metadata.format
-        started = metadata.started
-        ended = metadata.ended
-        participants = metadata.participants
-        playback_node = metadata.playback_node
-        unscoped_id = metadata.unscoped_id
-        meta_dict = dict(metadata.meta)
-        meta_dict["meetingId"] = unscoped_id
-
-        default_state = model.RecordingState.UNPUBLISHED
-        if metadata.published and not self.importer.import_unpublished:
-            default_state = model.RecordingState.PUBLISHED
 
         # Fetch tenant this record belongs to, or fail
         async with self.importer.db.session() as session:
@@ -646,49 +660,35 @@ class RecordingImportTask:
 
         # Copy files while we do not hold a database connection, because
         # this may take a while.
-        format_dir = self.importer.get_storage_dir(tenant.name, record_id, format_name)
+        format_dir = self.importer.get_storage_dir(
+            tenant.name, metadata.record_id, format_name
+        )
         await self._in_pool(self._copy_format_atomic, metafile.parent, format_dir)
 
-        # Create or fetch recording entity
         async with self.importer.db.session() as session:
-            stmt = model.Recording.select(record_id=record_id)
+            # Create or fetch recording entity
             record, record_created = await model.get_or_create(
                 session,
-                stmt,
-                lambda: model.Recording(
-                    tenant=tenant,
-                    record_id=record_id,
-                    external_id=unscoped_id,
-                    state=default_state,
-                    started=started,
-                    ended=ended,
-                    participants=participants,
-                    meta=meta_dict,
-                ),
+                model.Recording.select(record_id=metadata.record_id),
+                lambda: _record_from_metadata(metadata, tenant),
             )
-            if not record_created:
-                if record.tenant_fk != tenant.id:
-                    raise RecordingImportError("Recording belongs to different tenant!")
-                # TODO: Merge existing with new record?
 
-        # Create or fetch format entity
-        async with self.importer.db.session() as session:
-            stmt = model.PlaybackFormat.select(recording=record, format=format_name)
+            if record.tenant_fk != tenant.id:
+                raise RecordingImportError(
+                    "Recording belongs to different tenant already!"
+                )
+
+            if record_created and self.importer.import_unpublished:
+                record.state = model.RecordingState.UNPUBLISHED
+
+            # Create or fetch format entity
             format, format_created = await model.get_or_create(
                 session,
-                stmt,
-                lambda: model.PlaybackFormat(
-                    recording=record,
-                    format=format_name,
-                    xml=lxml.etree.tostring(playback_node).decode("UTF-8"),
-                ),
+                model.PlaybackFormat.select(recording=record, format=metadata.format),
+                lambda: _format_from_metadata(metadata, record),
             )
-            if not format_created:
-                pass  # TODO: Merge existing with new format?
-
-            await format.awaitable_attrs.recording
-            await format.recording.awaitable_attrs.tenant
             self.formats.append(format)
+            await session.commit()
 
         if format_created:
             await self._trigger_callbacks(metadata)
@@ -722,3 +722,311 @@ class RecordingImportTask:
 
     def _log(self, msg, level=logging.INFO, exc_info=None):
         LOG.log(level, f"[{self.import_id}] {msg}", exc_info=exc_info)
+
+    def __str__(self):
+        return f"{self.__class__.__name__}({self.import_id})"
+
+
+##
+### Desaster recovery and consistency checker
+##
+
+
+class FixCategory(enum.Enum):
+    NO_FIX = enum.auto()
+    MISSING = enum.auto()
+    ORPHAN = enum.auto()
+    PUB_STATE = enum.auto()
+    TENANT = enum.auto()
+
+
+class ConsistencyChecker:
+    """(experimental) Find and optionally fix recordings in the database
+    that do not match recording data on disk.
+    """
+
+    LOGGER = logging.getLogger(__name__ + ".ConsistencyChecker")
+
+    def __init__(self, manager: RecordingManager, autofix: set[FixCategory] | None):
+        self.manager = manager
+        self.autofix = autofix or set()
+        self.autofix.discard(FixCategory.NO_FIX)
+        self.unfixed_issues = 0
+
+    def log_progress(self, message):
+        """Overrideable method that logs scanning progress.
+
+        The default implementation logs progress at INFO level.
+        """
+        self.LOGGER.info(message)
+
+    async def ask_human(self, category: FixCategory, issue, solution, **details):
+        """Overrideable method that should report issue details and
+        decides if an available automatic solution should be applied.
+
+        The defalt implementation logs issue details at WARNING level
+        and returns true if :attr:`autofix` contains the given catergory.
+        A subclass may override this method to actually ask a human.
+
+        The NO_FIX category cannot be fixed automatically, so the return
+        value should always be false.
+        """
+        do_fix = category in self.autofix
+        msg = "Inconsistency found!\n"
+        msg += f"  Issue: {issue}\n"
+        if details:
+            msg += f"  Details: {' '.join(f'{k}={v}' for k, v in details.items())}\n"
+        if category is FixCategory.NO_FIX:
+            msg += f"  Fix (manual): {solution}"
+        elif do_fix:
+            msg += f"  Fix: {solution}"
+        else:
+            msg += f"  Fix (disabled): {solution}"
+
+        self.LOGGER.warning(msg.strip())
+
+        return do_fix
+
+    async def _should_autofix(self, category: FixCategory, issue, fix, **details):
+        do_fix = await self.ask_human(category, issue, fix, **details)
+        if category is FixCategory.NO_FIX:
+            do_fix = False
+        if not do_fix:
+            self.unfixed_issues += 1
+        return do_fix
+
+    async def _report_nofix(self, issue, fix, **details):
+        await self.ask_human(FixCategory.NO_FIX, issue, fix, **details)
+        self.unfixed_issues += 1
+
+    async def scan(self, prefix=""):
+        """Scan and optionally repair recordings in the database.
+
+        This is NOT thread safe. Stop all running instances of BBBLB
+        before starting a scan.
+
+        If *prefix* is a non-empty string, then only recordings with
+        a matching record_id are scanned or fixed. This can be used to
+        split huge recording pools into more manageable chunks.
+        """
+        ts_start = time.time()
+
+        async with self.manager.db.session() as session:
+            # Remember all recording IDs in the database
+            known_records = set()
+            stmt = model.select(model.Recording.record_id).execution_options(
+                yield_per=1000
+            )
+            if prefix:
+                stmt = stmt.where(
+                    model.Recording.record_id.startswith(prefix, autoescape=True)
+                )
+            async for record_id in await session.stream_scalars(stmt):
+                known_records.add(record_id)
+
+            self.log_progress(f"Found {len(known_records)} recordings in database")
+
+            # Forward scan: Check disk state and fix db records
+            found_records = set()
+            for tenant_dir in self.manager.storage_dir.iterdir():
+                tenant_name = tenant_dir.name
+                tenant = (
+                    await session.execute(model.Tenant.select(name=tenant_name))
+                ).scalar_one_or_none()
+
+                if not tenant:
+                    await self._report_nofix(
+                        "Found storage directory for an unknown tenant",
+                        "Remove the directory, or add the missing tenant",
+                        tenant=tenant_name,
+                    )
+                    continue
+
+                for record_dir in tenant_dir.iterdir():
+                    if prefix and not record_dir.name.startswith(prefix):
+                        continue
+                    found_records.add(record_dir.name)
+                    await self._scan_record(session, tenant, record_dir)
+
+            # All DB entries that were not found on disk are orphans
+            if known_records - found_records:
+                orphans = list(known_records - found_records)
+                stmt = model.Recording.select(model.Recording.id.in_(orphans))
+                async for record in await session.stream_scalars(stmt):
+                    await self._fix_orphan(session, record)
+
+            await session.commit()
+            self.log_progress(
+                f"Scan complete after {time.time() - ts_start:.2f} seconds."
+            )
+
+    async def _scan_record(
+        self, session: model.AsyncSession, tenant: model.Tenant, record_dir: Path
+    ):
+        self.log_progress(f"Scanning: {tenant.name}/{record_dir.name}")
+
+        record_id = record_dir.name
+        stmt = model.Recording.select(record_id=record_id)
+        recording = (await session.execute(stmt)).scalar_one_or_none()
+
+        # Find all formats and their state
+        formats = {}
+        published = set()
+        for format_dir in record_dir.iterdir():
+            format_name = format_dir.name
+            metadata_xml = format_dir / "metadata.xml"
+
+            if not metadata_xml.exists():
+                await self._report_nofix(
+                    "Recordings format directory does not contain a metadata.xml",
+                    "Remove the recording directory or recover missing files",
+                    path=format_dir,
+                )
+                continue
+
+            try:
+                xml = await self.manager._in_pool(lxml.etree.parse, metadata_xml)
+                metaxml = FormatXMLWrapper(xml)
+            except Exception:
+                await self._report_nofix(
+                    "Failed to parse metadata.xml",
+                    "Check and fix the file or recover it from backups",
+                    path=metadata_xml,
+                )
+                continue
+            formats[format_name] = metaxml
+            symlink = self.manager.public_dir / format_name / record_id
+            if symlink.is_symlink():
+                published.add(format_name)
+
+        if not formats:
+            await self._report_nofix(
+                "Recording directory exists but has no valid format",
+                "Remove the directory if empty",
+                path=record_dir,
+            )
+            return  # Orphans will be cleaned up later
+
+        if not recording:
+            recording = await self._fix_missing(session, tenant, record_id, metaxml)
+            if not recording:
+                return
+
+        if (await recording.awaitable_attrs.tenant) != tenant:
+            await self._fix_tenant(recording, tenant)
+
+        state = (
+            model.RecordingState.PUBLISHED
+            if published
+            else model.RecordingState.UNPUBLISHED
+        )
+        if len(published) not in (0, len(formats)):
+            await self._report_nofix(
+                "Recording has both published and unpublished formats",
+                "Set the recording to the correct state",
+                tenant=tenant.name,
+                record_id=record_id,
+            )
+        elif recording.state is not state:
+            await self._fix_visibility(recording, state)
+
+        expected_formats = set(formats)
+        known_formats = {f.format for f in await recording.awaitable_attrs.formats}
+        for missing in expected_formats - known_formats:
+            await self._fix_missing_format(session, recording, formats[missing])
+        for orphan in known_formats - expected_formats:
+            await self._fix_orphan_format(session, recording, orphan)
+
+        return recording
+
+    async def _fix_missing(
+        self,
+        session: model.AsyncSession,
+        tenant: model.Tenant,
+        record_id: str,
+        format_meta: FormatXMLWrapper,
+    ) -> model.Recording | None:
+        if await self._should_autofix(
+            FixCategory.MISSING,
+            "Recording found on disk but missing in database",
+            "Add recording to database",
+            tenant=tenant.name,
+            record_id=record_id,
+        ):
+            recording = _record_from_metadata(format_meta, tenant)
+            session.add(recording)
+            return recording
+
+    async def _fix_orphan(
+        self, session: model.AsyncSession, recording: model.Recording
+    ):
+        if await self._should_autofix(
+            FixCategory.ORPHAN,
+            "Recording found in database but not on disk",
+            "Delete recording from database",
+            tenant=recording.tenant.name,
+            record_id=recording.record_id,
+        ):
+            await session.delete(recording)
+
+    async def _fix_tenant(
+        self,
+        recording: model.Recording,
+        tenant: model.Tenant,
+    ):
+        if await self._should_autofix(
+            FixCategory.TENANT,
+            "Recording belongs to different tenant",
+            "Change owning tenant of recording to match on-disk storage location.",
+            tenant=recording.tenant.name,
+            record_id=recording.record_id,
+        ):
+            recording.tenant = tenant
+
+    async def _fix_visibility(
+        self,
+        recording: model.Recording,
+        expected_state: model.RecordingState,
+    ):
+        if await self._should_autofix(
+            FixCategory.PUB_STATE,
+            f"Recording state is {expected_state._name_} on disk but not in database",
+            f"Set recording state to {expected_state._name_}",
+            tenant=recording.tenant.name,
+            record_id=recording.record_id,
+        ):
+            recording.state = expected_state
+
+    async def _fix_missing_format(
+        self,
+        session: model.AsyncSession,
+        recording: model.Recording,
+        format_xml: FormatXMLWrapper,
+    ):
+        if await self._should_autofix(
+            FixCategory.MISSING,
+            "Recording format found on disk but not in database",
+            "Add missing format to database",
+            tenant=recording.tenant.name,
+            record_id=recording.record_id,
+            format=format_xml.format,
+        ):
+            format = _format_from_metadata(format_xml, recording)
+            session.add(format)
+            return format
+
+    async def _fix_orphan_format(
+        self,
+        session: model.AsyncSession,
+        recording: model.Recording,
+        format: model.PlaybackFormat,
+    ) -> model.Recording | None:
+        if await self._should_autofix(
+            FixCategory.ORPHAN,
+            "Recording formnat found in database but not in disk",
+            "Remove orphaned recording format from database",
+            tenant=recording.tenant.name,
+            record_id=recording.record_id,
+            format=format.format,
+        ):
+            await session.delete(format)
