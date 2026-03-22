@@ -1,5 +1,7 @@
+.. _cli-bbblb:
+
 bbblb
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=====
 
 ``Usage: bbblb [OPTIONS] COMMAND [ARGS]...``
 
@@ -17,20 +19,22 @@ bbblb
 .. table:: Sub-Commands
   :width: 100%
 
-  =========  ===============================================================================
-  Command    Help                                                                           
-  =========  ===============================================================================
-  db         Manage database                                                                
-  maketoken  Generate an Admin Token that can be used to authenticate against the BBBLB API.
-  override   Manage tenant overrides                                                        
-  recording  Recording management.                                                          
-  server     Manage servers                                                                 
-  state      Tools to export and import cluster state in JSON files.                        
-  tenant     Manage tenants                                                                 
-  =========  ===============================================================================
+  ======================================  ===============================================================================
+  Sub-Command                             Help                                                                           
+  ======================================  ===============================================================================
+  :ref:`db <cli-bbblb-db>`                Manage database                                                                
+  :ref:`maketoken <cli-bbblb-maketoken>`  Generate an Admin Token that can be used to authenticate against the BBBLB API.
+  :ref:`override <cli-bbblb-override>`    Manage tenant overrides                                                        
+  :ref:`recording <cli-bbblb-recording>`  Recording management.                                                          
+  :ref:`server <cli-bbblb-server>`        Manage servers                                                                 
+  :ref:`state <cli-bbblb-state>`          Tools to export and import cluster state in JSON files.                        
+  :ref:`tenant <cli-bbblb-tenant>`        Manage tenants                                                                 
+  ======================================  ===============================================================================
+
+.. _cli-bbblb-db:
 
 db
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--
 
 ``Usage: bbblb db [OPTIONS] COMMAND [ARGS]...``
 
@@ -39,14 +43,16 @@ Manage database
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  ===============================================
-  Command  Help                                           
-  =======  ===============================================
-  migrate  Migrate database to the current schema version.
-  =======  ===============================================
+  =====================================  ===============================================
+  Sub-Command                            Help                                           
+  =====================================  ===============================================
+  :ref:`migrate <cli-bbblb-db-migrate>`  Migrate database to the current schema version.
+  =====================================  ===============================================
+
+.. _cli-bbblb-db-migrate:
 
 db migrate
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^
 
 ``Usage: bbblb db migrate [OPTIONS]``
 
@@ -63,8 +69,10 @@ WARNING: Make backups!
   --create  Create database if needed (only postgres).
   ========  ==========================================
 
+.. _cli-bbblb-maketoken:
+
 maketoken
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------
 
 ``Usage: bbblb maketoken [OPTIONS] SUBJECT [SCOPE]...``
 
@@ -93,8 +101,10 @@ coded because tenants or servers can create their own tokens.
   SCOPE                 Optional argument                                                     
   ====================  ======================================================================
 
+.. _cli-bbblb-override:
+
 override
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+--------
 
 ``Usage: bbblb override [OPTIONS] COMMAND [ARGS]...``
 
@@ -103,16 +113,18 @@ Manage tenant overrides
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  ===========================================================
-  Command  Help                                                       
-  =======  ===========================================================
-  list     List create or join overrides by tenant.                   
-  set      Override create or join call parameters for a given tenant.
-  unset    Remove specific overrides on a tenant.                     
-  =======  ===========================================================
+  =======================================  ===========================================================
+  Sub-Command                              Help                                                       
+  =======================================  ===========================================================
+  :ref:`list <cli-bbblb-override-list>`    List create or join overrides by tenant.                   
+  :ref:`set <cli-bbblb-override-set>`      Override create or join call parameters for a given tenant.
+  :ref:`unset <cli-bbblb-override-unset>`  Remove specific overrides on a tenant.                     
+  =======================================  ===========================================================
+
+.. _cli-bbblb-override-list:
 
 override list
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb override list [OPTIONS] [TENANT]``
 
@@ -128,8 +140,10 @@ List create or join overrides by tenant.
   --type LIST  List specific override types only  [default: create,join]
   ===========  =========================================================
 
+.. _cli-bbblb-override-set:
+
 override set
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^
 
 ``Usage: bbblb override set [OPTIONS] TENANT {create|join} NAME=VALUE``
 
@@ -159,8 +173,10 @@ parameter (e.g. disabledFeatures).
   NAME=VALUE  Optional argument                                                    
   ==========  =====================================================================
 
+.. _cli-bbblb-override-unset:
+
 override unset
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^
 
 ``Usage: bbblb override unset [OPTIONS] TENANT {create|join} NAME``
 
@@ -177,8 +193,10 @@ Remove specific overrides on a tenant.
   NAME    Optional argument
   ======  =================
 
+.. _cli-bbblb-recording:
+
 recording
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------
 
 ``Usage: bbblb recording [OPTIONS] COMMAND [ARGS]...``
 
@@ -187,19 +205,21 @@ Recording management.
 .. table:: Sub-Commands
   :width: 100%
 
-  ==============  ============================================================================
-  Command         Help                                                                        
-  ==============  ============================================================================
-  list            List all recordings and their formats                                       
-  delete          Delete recordings (all formats)                                             
-  publish         Publish recordings                                                          
-  unpublish       Unpublish recordings                                                        
-  import          Import one or more recordings from a tar archive                            
-  check-database  (experimental) Report and optionally fix issues with the recording database.
-  ==============  ============================================================================
+  ==========================================================  ============================================================================
+  Sub-Command                                                 Help                                                                        
+  ==========================================================  ============================================================================
+  :ref:`list <cli-bbblb-recording-list>`                      List all recordings and their formats                                       
+  :ref:`delete <cli-bbblb-recording-delete>`                  Delete recordings (all formats)                                             
+  :ref:`publish <cli-bbblb-recording-publish>`                Publish recordings                                                          
+  :ref:`unpublish <cli-bbblb-recording-unpublish>`            Unpublish recordings                                                        
+  :ref:`import <cli-bbblb-recording-import>`                  Import one or more recordings from a tar archive                            
+  :ref:`check-database <cli-bbblb-recording-check-database>`  (experimental) Report and optionally fix issues with the recording database.
+  ==========================================================  ============================================================================
+
+.. _cli-bbblb-recording-list:
 
 recording list
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording list [OPTIONS]``
 
@@ -215,8 +235,10 @@ List all recordings and their formats
   --format TEXT  Filter by format
   =============  ================
 
+.. _cli-bbblb-recording-delete:
+
 recording delete
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording delete [OPTIONS] [RECORD_ID]...``
 
@@ -231,8 +253,10 @@ Delete recordings (all formats)
   RECORD_ID  Optional argument
   =========  =================
 
+.. _cli-bbblb-recording-publish:
+
 recording publish
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording publish [OPTIONS] [RECORD_ID]...``
 
@@ -247,8 +271,10 @@ Publish recordings
   RECORD_ID  Optional argument
   =========  =================
 
+.. _cli-bbblb-recording-unpublish:
+
 recording unpublish
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording unpublish [OPTIONS] [RECORD_ID]...``
 
@@ -263,8 +289,10 @@ Unpublish recordings
   RECORD_ID  Optional argument
   =========  =================
 
+.. _cli-bbblb-recording-import:
+
 recording import
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording import [OPTIONS] [FILE]``
 
@@ -281,8 +309,10 @@ Import one or more recordings from a tar archive
   FILE                     Optional argument                          
   =======================  ===========================================
 
+.. _cli-bbblb-recording-check-database:
+
 recording check-database
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 ``Usage: bbblb recording check-database [OPTIONS]``
 
@@ -314,8 +344,10 @@ fixes enabled. Make backups!
   --fix-all       Fix everything that can be fixed automatically.                                             
   ==============  ============================================================================================
 
+.. _cli-bbblb-server:
+
 server
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------
 
 ``Usage: bbblb server [OPTIONS] COMMAND [ARGS]...``
 
@@ -324,19 +356,21 @@ Manage servers
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  =======================================================
-  Command  Help                                                   
-  =======  =======================================================
-  create   Create a new server or update a server secret.         
-  enable   Enable a server and make it available for new meetings.
-  disable  Disable a server and wait for meetings to end.         
-  delete   Remove an empty server from the server list.           
-  list     List all servers with their secrets.                   
-  stats    Show server statistics (state, health, load).          
-  =======  =======================================================
+  =========================================  =======================================================
+  Sub-Command                                Help                                                   
+  =========================================  =======================================================
+  :ref:`create <cli-bbblb-server-create>`    Create a new server or update a server secret.         
+  :ref:`enable <cli-bbblb-server-enable>`    Enable a server and make it available for new meetings.
+  :ref:`disable <cli-bbblb-server-disable>`  Disable a server and wait for meetings to end.         
+  :ref:`delete <cli-bbblb-server-delete>`    Remove an empty server from the server list.           
+  :ref:`list <cli-bbblb-server-list>`        List all servers with their secrets.                   
+  :ref:`stats <cli-bbblb-server-stats>`      Show server statistics (state, health, load).          
+  =========================================  =======================================================
+
+.. _cli-bbblb-server-create:
 
 server create
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb server create [OPTIONS] DOMAIN``
 
@@ -353,8 +387,10 @@ Create a new server or update a server secret.
   DOMAIN         Required argument                                  
   =============  ===================================================
 
+.. _cli-bbblb-server-enable:
+
 server enable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb server enable [OPTIONS] DOMAIN``
 
@@ -370,8 +406,10 @@ Enable a server and make it available for new meetings.
   --now   Make the server immediately available for new meetings.
   ======  =======================================================
 
+.. _cli-bbblb-server-disable:
+
 server disable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^
 
 ``Usage: bbblb server disable [OPTIONS] DOMAIN``
 
@@ -388,8 +426,10 @@ Disable a server and wait for meetings to end.
   --wait INTEGER  Wait for this many seconds for all meetings to end. A value of -1 waits forever  [default: 0]
   ==============  =============================================================================================
 
+.. _cli-bbblb-server-delete:
+
 server delete
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb server delete [OPTIONS] DOMAIN``
 
@@ -404,8 +444,10 @@ Remove an empty server from the server list.
   DOMAIN  Required argument
   ======  =================
 
+.. _cli-bbblb-server-list:
+
 server list
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^
 
 ``Usage: bbblb server list [OPTIONS]``
 
@@ -420,8 +462,10 @@ List all servers with their secrets.
   --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
   ======================================  ==================================================
 
+.. _cli-bbblb-server-stats:
+
 server stats
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^
 
 ``Usage: bbblb server stats [OPTIONS]``
 
@@ -436,8 +480,10 @@ Show server statistics (state, health, load).
   --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
   ======================================  ==================================================
 
+.. _cli-bbblb-state:
+
 state
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----
 
 ``Usage: bbblb state [OPTIONS] COMMAND [ARGS]...``
 
@@ -446,15 +492,17 @@ Tools to export and import cluster state in JSON files.
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  =========================================================
-  Command  Help                                                     
-  =======  =========================================================
-  export   Export current cluster state as JSON.                    
-  import   Load and apply server and tenant configuration from JSON.
-  =======  =========================================================
+  ======================================  =========================================================
+  Sub-Command                             Help                                                     
+  ======================================  =========================================================
+  :ref:`export <cli-bbblb-state-export>`  Export current cluster state as JSON.                    
+  :ref:`import <cli-bbblb-state-import>`  Load and apply server and tenant configuration from JSON.
+  ======================================  =========================================================
+
+.. _cli-bbblb-state-export:
 
 state export
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^
 
 ``Usage: bbblb state export [OPTIONS] [FILE]``
 
@@ -470,8 +518,10 @@ Export current cluster state as JSON.
   FILE                Optional argument                                                                           
   ==================  ============================================================================================
 
+.. _cli-bbblb-state-import:
+
 state import
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^
 
 ``Usage: bbblb state import [OPTIONS] [FILE]``
 
@@ -499,8 +549,10 @@ Use --nuke to forcefully end all meetings on obsolete servers or meetings.
   FILE                Optional argument                                                                                      
   ==================  =======================================================================================================
 
+.. _cli-bbblb-tenant:
+
 tenant
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------
 
 ``Usage: bbblb tenant [OPTIONS] COMMAND [ARGS]...``
 
@@ -509,17 +561,19 @@ Manage tenants
 .. table:: Sub-Commands
   :width: 100%
 
-  =======  ===============================================
-  Command  Help                                           
-  =======  ===============================================
-  create                                                  
-  enable   Enable a tenant                                
-  disable  Disable a tenant                               
-  list     List all tenants with their realms and secrets.
-  =======  ===============================================
+  =========================================  ===============================================
+  Sub-Command                                Help                                           
+  =========================================  ===============================================
+  :ref:`create <cli-bbblb-tenant-create>`                                                   
+  :ref:`enable <cli-bbblb-tenant-enable>`    Enable a tenant                                
+  :ref:`disable <cli-bbblb-tenant-disable>`  Disable a tenant                               
+  :ref:`list <cli-bbblb-tenant-list>`        List all tenants with their realms and secrets.
+  =========================================  ===============================================
+
+.. _cli-bbblb-tenant-create:
 
 tenant create
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb tenant create [OPTIONS] NAME``
 
@@ -535,8 +589,10 @@ tenant create
   NAME           Required argument                                                              
   =============  ===============================================================================
 
+.. _cli-bbblb-tenant-enable:
+
 tenant enable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^
 
 ``Usage: bbblb tenant enable [OPTIONS] NAME``
 
@@ -551,8 +607,10 @@ Enable a tenant
   NAME    Required argument
   ======  =================
 
+.. _cli-bbblb-tenant-disable:
+
 tenant disable
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^
 
 ``Usage: bbblb tenant disable [OPTIONS] NAME``
 
@@ -568,8 +626,10 @@ Disable a tenant
   --nuke  End all meetings owned by this tenant.
   ======  ======================================
 
+.. _cli-bbblb-tenant-list:
+
 tenant list
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^
 
 ``Usage: bbblb tenant list [OPTIONS]``
 

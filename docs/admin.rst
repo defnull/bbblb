@@ -98,6 +98,35 @@ The `FILE` parameter should point to a `.tar` or `.tgz` archive containing the r
 
 The tar file can actually contain multiple recordings. Every directory with a `metadata.xml` will be imported.
 
+Mass-Import Recordings
+~~~~~~~~~~~~~~~~~~~~~~
+
+If you have a lot of recordings and the 'standard' way to import them one by
+one is too slow, there is another way. It's more efficient and way quicker,
+but also more involved because you now have to do half of the steps yourself
+and there is no safety net. Only do this if you know what you are doing.
+Here is how:
+
+* Copy each unpacked recording into the corresponding storage
+  directory (``{PATH_DATA}/recordings/storage/<tenant>/<record_id>/<format>/...``).
+
+  * Note the order of ``../<record_id>/<format>/..``, which is different from
+    the way BBB or Scalelite store recordings.
+  * Make sure the file permissions are correct. BBBLB should be the owner of
+    all files and directories.
+
+* Then run :ref:`cli-bbblb-recording-check-database` without any checks to see if it can find
+  the new recordings.
+* Then run the command again with the `--fix-missing` switch to actually import any recordings
+  that are on disk and not in the database yet.
+* Then run :ref:`cli-bbblb-recording-publish` for all of the imported recording IDs to
+  publish them.
+
+This is also a good way to mass-delete recordings, or mass-move recordings
+to a new tenant. Do the work in the storage directory yourself, then use
+the :ref:`cli-bbblb-recording-check-database` command to fix the database.
+
+
 Sync Cluster State
 ===============================
 

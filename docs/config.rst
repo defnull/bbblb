@@ -18,5 +18,5 @@ Config Options
 
 This is an auto-generated list of all available config options, ordered loosely by topic.
 
-.. include:: _config.rst
+.. include:: _generated/_config.rst
 

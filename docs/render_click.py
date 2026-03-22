@@ -28,8 +28,12 @@ def print_table(title, header: list[str], rows: list[list[str]]):
 
 def print_recursive(cmd: click.Command, parent=None):
     ctx = click.Context(cmd, info_name=cmd.name, parent=parent, max_content_width=60, **cmd.context_settings)
-    print(f"{' '.join(ctx.command_path.split()[1:] or ["bbblb"])}")
-    print("~" * 80)
+    ref = "cli-" + '-'.join(ctx.command_path.split())
+    title  = ' '.join(ctx.command_path.split()[1:] or ["bbblb"])
+    print(f".. _{ref}:")
+    print()
+    print(title)
+    print("=-^"[len(ctx.command_path.split())-1] * len(title))
     print()
     print(f"``{' '.join(s.strip() for s in strformat(cmd.format_usage, ctx).splitlines())}``")
     print()
@@ -53,7 +57,7 @@ def print_recursive(cmd: click.Command, parent=None):
         print()
 
     if isinstance(cmd, click.Group):
-        print_table("Sub-Commands", ["Command", "Help"], [[x.name or "", inspect.cleandoc(x.help or "").partition("\n")[0] or ""] for x in cmd.commands.values()])
+        print_table("Sub-Commands", ["Sub-Command", "Help"], [[f":ref:`{x.name} <{ref}-{x.name}>`", inspect.cleandoc(x.help or "").partition("\n")[0] or ""] for x in cmd.commands.values()])
         print()
 
     if isinstance(cmd, click.Group):
