@@ -34,7 +34,7 @@ from . import main, async_command
 async def maketoken(
     obj: ServiceRegistry, subject, expire, server, tenant, scope, verbose
 ):
-    """Generate an Admin Token that can be used to authenticate against the BBBLB API.
+    """Generate admin- and other and API tokens.
 
     The SUBJECT should be a short name or id that identifies the token
     or token owner. It will be logged when the token is used.

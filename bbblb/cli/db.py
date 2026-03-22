@@ -11,7 +11,7 @@ from bbblb.cli import async_command, main
 
 @main.group()
 def db():
-    """Manage database"""
+    """Manage the database schema"""
 
 
 @db.command()
@@ -21,7 +21,7 @@ def db():
 @async_command()
 async def migrate(obj: ServiceRegistry, create: bool):
     """
-    Migrate database to the current schema version.
+    Migrate the configured database to the current schema version.
 
     WARNING: Make backups!
     """

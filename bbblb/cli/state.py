@@ -17,7 +17,7 @@ from . import MultiChoice, main, async_command
 
 @main.group()
 def state():
-    """Tools to export and import cluster state in JSON files."""
+    """Tools to import or export cluster state as JSON files."""
 
 
 type_choices = MultiChoice(["servers", "tenants"])

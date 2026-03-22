@@ -19,17 +19,16 @@ bbblb
 .. table:: Sub-Commands
   :width: 100%
 
-  ======================================  ===============================================================================
-  Sub-Command                             Help                                                                           
-  ======================================  ===============================================================================
-  :ref:`db <cli-bbblb-db>`                Manage database                                                                
-  :ref:`maketoken <cli-bbblb-maketoken>`  Generate an Admin Token that can be used to authenticate against the BBBLB API.
-  :ref:`override <cli-bbblb-override>`    Manage tenant overrides                                                        
-  :ref:`recording <cli-bbblb-recording>`  Recording management.                                                          
-  :ref:`server <cli-bbblb-server>`        Manage servers                                                                 
-  :ref:`state <cli-bbblb-state>`          Tools to export and import cluster state in JSON files.                        
-  :ref:`tenant <cli-bbblb-tenant>`        Manage tenants                                                                 
-  ======================================  ===============================================================================
+  ======================================  ======================================================
+  Sub-Command                             Help                                                  
+  ======================================  ======================================================
+  :ref:`db <cli-bbblb-db>`                Manage the database schema                            
+  :ref:`maketoken <cli-bbblb-maketoken>`  Generate admin- and other and API tokens.             
+  :ref:`recording <cli-bbblb-recording>`  Recording management.                                 
+  :ref:`server <cli-bbblb-server>`        Manage BBB servers.                                   
+  :ref:`state <cli-bbblb-state>`          Tools to import or export cluster state as JSON files.
+  :ref:`tenant <cli-bbblb-tenant>`        Manage tenants.                                       
+  ======================================  ======================================================
 
 .. _cli-bbblb-db:
 
@@ -38,16 +37,16 @@ db
 
 ``Usage: bbblb db [OPTIONS] COMMAND [ARGS]...``
 
-Manage database
+Manage the database schema
 
 .. table:: Sub-Commands
   :width: 100%
 
-  =====================================  ===============================================
-  Sub-Command                            Help                                           
-  =====================================  ===============================================
-  :ref:`migrate <cli-bbblb-db-migrate>`  Migrate database to the current schema version.
-  =====================================  ===============================================
+  =====================================  ==============================================================
+  Sub-Command                            Help                                                          
+  =====================================  ==============================================================
+  :ref:`migrate <cli-bbblb-db-migrate>`  Migrate the configured database to the current schema version.
+  =====================================  ==============================================================
 
 .. _cli-bbblb-db-migrate:
 
@@ -56,7 +55,7 @@ db migrate
 
 ``Usage: bbblb db migrate [OPTIONS]``
 
-Migrate database to the current schema version.
+Migrate the configured database to the current schema version.
 
 WARNING: Make backups!
 
@@ -76,7 +75,7 @@ maketoken
 
 ``Usage: bbblb maketoken [OPTIONS] SUBJECT [SCOPE]...``
 
-Generate an Admin Token that can be used to authenticate against the BBBLB API.
+Generate admin- and other and API tokens.
 
 The SUBJECT should be a short name or id that identifies the token
 or token owner. It will be logged when the token is used.
@@ -100,98 +99,6 @@ coded because tenants or servers can create their own tokens.
   SUBJECT               Required argument                                                     
   SCOPE                 Optional argument                                                     
   ====================  ======================================================================
-
-.. _cli-bbblb-override:
-
-override
---------
-
-``Usage: bbblb override [OPTIONS] COMMAND [ARGS]...``
-
-Manage tenant overrides
-
-.. table:: Sub-Commands
-  :width: 100%
-
-  =======================================  ===========================================================
-  Sub-Command                              Help                                                       
-  =======================================  ===========================================================
-  :ref:`list <cli-bbblb-override-list>`    List create or join overrides by tenant.                   
-  :ref:`set <cli-bbblb-override-set>`      Override create or join call parameters for a given tenant.
-  :ref:`unset <cli-bbblb-override-unset>`  Remove specific overrides on a tenant.                     
-  =======================================  ===========================================================
-
-.. _cli-bbblb-override-list:
-
-override list
-^^^^^^^^^^^^^
-
-``Usage: bbblb override list [OPTIONS] [TENANT]``
-
-List create or join overrides by tenant.
-
-.. table:: Options
-  :width: 100%
-
-  ===========  =========================================================
-  Option       Help                                                     
-  ===========  =========================================================
-  TENANT       Optional argument                                        
-  --type LIST  List specific override types only  [default: create,join]
-  ===========  =========================================================
-
-.. _cli-bbblb-override-set:
-
-override set
-^^^^^^^^^^^^
-
-``Usage: bbblb override set [OPTIONS] TENANT {create|join} NAME=VALUE``
-
-Override create or join call parameters for a given tenant.
-
-You can define any number of overrides per tenant as PARAM=VALUE
-pairs. PARAM should match a BBB API parameter supported by the given
-type (create or join) and the given VALUE will be enforced on all
-future API calls issued by this tenant. If VALUE is empty, then the
-parameter will be removed from API calls.
-
-Instead of the '=' operator you can also use '?' to define a
-fallback for missing parameters instead of an override, '<' to
-define a maximum value for numeric parameters (e.g. duration
-or maxParticipants), or '+' to add items to a comma separated list
-parameter (e.g. disabledFeatures).
-
-.. table:: Options
-  :width: 100%
-
-  ==========  =====================================================================
-  Option      Help                                                                 
-  ==========  =====================================================================
-  --clear     Remove all overrides for that tenant and type before adding new ones.
-  TENANT      Required argument                                                    
-  TYPE        Required argument                                                    
-  NAME=VALUE  Optional argument                                                    
-  ==========  =====================================================================
-
-.. _cli-bbblb-override-unset:
-
-override unset
-^^^^^^^^^^^^^^
-
-``Usage: bbblb override unset [OPTIONS] TENANT {create|join} NAME``
-
-Remove specific overrides on a tenant.
-
-.. table:: Options
-  :width: 100%
-
-  ======  =================
-  Option  Help             
-  ======  =================
-  TENANT  Required argument
-  TYPE    Required argument
-  NAME    Optional argument
-  ======  =================
 
 .. _cli-bbblb-recording:
 
@@ -351,7 +258,7 @@ server
 
 ``Usage: bbblb server [OPTIONS] COMMAND [ARGS]...``
 
-Manage servers
+Manage BBB servers.
 
 .. table:: Sub-Commands
   :width: 100%
@@ -487,7 +394,7 @@ state
 
 ``Usage: bbblb state [OPTIONS] COMMAND [ARGS]...``
 
-Tools to export and import cluster state in JSON files.
+Tools to import or export cluster state as JSON files.
 
 .. table:: Sub-Commands
   :width: 100%
@@ -556,19 +463,20 @@ tenant
 
 ``Usage: bbblb tenant [OPTIONS] COMMAND [ARGS]...``
 
-Manage tenants
+Manage tenants.
 
 .. table:: Sub-Commands
   :width: 100%
 
-  =========================================  ===============================================
-  Sub-Command                                Help                                           
-  =========================================  ===============================================
-  :ref:`create <cli-bbblb-tenant-create>`                                                   
-  :ref:`enable <cli-bbblb-tenant-enable>`    Enable a tenant                                
-  :ref:`disable <cli-bbblb-tenant-disable>`  Disable a tenant                               
-  :ref:`list <cli-bbblb-tenant-list>`        List all tenants with their realms and secrets.
-  =========================================  ===============================================
+  ===========================================  =========================================
+  Sub-Command                                  Help                                     
+  ===========================================  =========================================
+  :ref:`create <cli-bbblb-tenant-create>`      Create a new tenant.                     
+  :ref:`enable <cli-bbblb-tenant-enable>`      Enable a tenant.                         
+  :ref:`disable <cli-bbblb-tenant-disable>`    Disable (lock out) a tenant.             
+  :ref:`list <cli-bbblb-tenant-list>`          List all tenants and their configuration.
+  :ref:`override <cli-bbblb-tenant-override>`  Manage tenant overrides.                 
+  ===========================================  =========================================
 
 .. _cli-bbblb-tenant-create:
 
@@ -576,6 +484,8 @@ tenant create
 ^^^^^^^^^^^^^
 
 ``Usage: bbblb tenant create [OPTIONS] NAME``
+
+Create a new tenant.
 
 .. table:: Options
   :width: 100%
@@ -596,7 +506,7 @@ tenant enable
 
 ``Usage: bbblb tenant enable [OPTIONS] NAME``
 
-Enable a tenant
+Enable a tenant.
 
 .. table:: Options
   :width: 100%
@@ -614,7 +524,7 @@ tenant disable
 
 ``Usage: bbblb tenant disable [OPTIONS] NAME``
 
-Disable a tenant
+Disable (lock out) a tenant.
 
 .. table:: Options
   :width: 100%
@@ -633,7 +543,7 @@ tenant list
 
 ``Usage: bbblb tenant list [OPTIONS]``
 
-List all tenants with their realms and secrets.
+List all tenants and their configuration.
 
 .. table:: Options
   :width: 100%
@@ -642,5 +552,45 @@ List all tenants with their realms and secrets.
   Option                                  Help                                              
   ======================================  ==================================================
   --table-format [simple|plain|raw|json]  Change the result table format.  [default: simple]
+  --with-overrides                        Include overrides in listing.                     
+  --with-secret                           Include secret in listing.                        
   ======================================  ==================================================
+
+.. _cli-bbblb-tenant-override:
+
+tenant override
+^^^^^^^^^^^^^^^
+
+``Usage: bbblb tenant override [OPTIONS] TENANT``
+
+Manage tenant overrides.
+
+Tenant overrides affect the parameters of `create` or `join` API
+calls coming from a tenant.
+
+You can --set any number of overrides per tenant as PARAM=VALUE
+pairs. PARAM should match a BBB API parameter supported by the
+given type (`create` or `join`) and VALUE will be enforced on all
+future API calls issued by this tenant. If VALUE is empty, then
+the parameter will be removed from API calls.
+
+Instead of the '=' operator you can also use '?' to define a
+fallback for missing parameters, '<' to define a maximum value for
+numeric parameters (e.g. duration or maxParticipants), or '+' to
+add items to a list-type parameter (e.g. disabledFeatures).
+
+Example: --set record=false --set duration<40
+
+.. table:: Options
+  :width: 100%
+
+  ====================  ===================================================================================================
+  Option                Help                                                                                               
+  ====================  ===================================================================================================
+  TENANT                Required argument                                                                                  
+  --type [create|join]  Change the API call this override should apply to  [default: create]                               
+  --set PARAM=VALUE     Set or replace an override for a specific API parameter. Can be repeated for additional parameters.
+  --unset PARAM         Remove an override for a specific API parameter. Can be repeated for additional parameters.        
+  --clear               Remove all overrides before adding new ones.                                                       
+  ====================  ===================================================================================================
 

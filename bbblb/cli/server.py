@@ -17,7 +17,7 @@ from . import Table, main, async_command
 
 @main.group()
 def server():
-    """Manage servers"""
+    """Manage BBB servers."""
 
 
 @server.command()
