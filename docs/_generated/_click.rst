@@ -568,18 +568,19 @@ Manage tenant overrides.
 Tenant overrides affect the parameters of `create` or `join` API
 calls coming from a tenant.
 
-You can --set any number of overrides per tenant as PARAM=VALUE
-pairs. PARAM should match a BBB API parameter supported by the
-given type (`create` or `join`) and VALUE will be enforced on all
-future API calls issued by this tenant. If VALUE is empty, then
+You can `--set` any number of overrides per tenant as `PARAM=VALUE`
+pairs. `PARAM` should match a BBB API parameter supported by the
+given type (`create` or `join`) and `VALUE` will be enforced on all
+future API calls issued by this tenant. If `VALUE` is empty, then
 the parameter will be removed from API calls.
 
-Instead of the '=' operator you can also use '?' to define a
-fallback for missing parameters, '<' to define a maximum value for
-numeric parameters (e.g. duration or maxParticipants), or '+' to
-add items to a list-type parameter (e.g. disabledFeatures).
+Instead of the `=` operator you can also use `PARAM?VALUE` to define
+a fallback for missing parameters, `PARAM<VALUE` to define a maximum
+value for numeric parameters (e.g. 'duration' or 'maxParticipants'),
+or `PARAM+VALUE` to add items to a list-type parameter
+(e.g. 'disabledFeatures').
 
-Example: --set record=false --set duration<40
+Example: `--set record=false --set duration<40`
 
 .. table:: Options
   :width: 100%
