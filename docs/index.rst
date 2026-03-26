@@ -110,7 +110,7 @@ Footnotes
    succession, they may all end up on the same server while their
    combined load is still low. This can drastically impact cluster
    balancing and even cause stability issues. BBBLB tries to avoid this
-   issue by taking into account the predicted future load load of new
+   issue by taking into account the predicted future load of new
    meetings.
 .. [#spp] Recordings are transferred directly via HTTPS. No configuration,
    credentials, ``ssh`` keys or shared network file system necessary.

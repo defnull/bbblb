@@ -6,7 +6,7 @@ Before we can actually start our first meeting, we need to add *Tenants* and *Se
 
 .. note::
 
-    If you followed the :doc:`docker compose based deployment <install>`, you can use the ``bbblb.sh`` wrapper to tun ``bbblb`` inside the container.
+    If you followed the :doc:`docker compose based deployment <install>`, you can use the ``bbblb.sh`` wrapper to run ``bbblb`` inside the container.
 
 Manage Tenants
 ==============
@@ -92,7 +92,7 @@ You can import existing recordings and assign them to a tenant with the `bbblb` 
 
     Usage: bbblb recording import --tenant TENANT FILE
 
-The `FILE` parameter should point to a `.tar` or `.tgz` archive containing the recording data. If missing or `-`, the command will read from standard input, which is most usefull when BBBLB runs within a container that amy not see the files you want to import::
+The `FILE` parameter should point to a `.tar` or `.tgz` archive containing the recording data. If missing or `-`, the command will read from standard input, which is most useful when BBBLB runs within a container that may not see the files you want to import::
 
     tar -c /path/to/presentation/ | bbblb recording import --tenant mytenant -
 
@@ -143,7 +143,7 @@ This can be used for backup, but also to *sync* the cluster state with a JSON st
     
     # TODO: Modify or generate cluster.json with your own tooling
 
-    # Check what would need do change so the sate matches cluster.json
+    # Check what would need to change so the state matches cluster.json
     bbblb state import --dry-run < cluster.json
     # Actually change the cluster state to match cluster.json
     bbblb state import --delete --nuke < cluster.json

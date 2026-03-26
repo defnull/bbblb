@@ -19,12 +19,12 @@ signed by a trusted party and provided as an
 
 There are three types of tokens:
 
--  **Admin Tokens** are sigend with the global ``BBBLB_SECRET`` and allow
+-  **Admin Tokens** are signed with the global ``BBBLB_SECRET`` and allow
    admins or automation tools to manage and control BBBLB at runtime.
    Only BBBLB admins can create those tokens. Their permissions can be
    limited with *scopes* (see below).
 -  **Tenant Tokens** are signed with the tenant-specific API secret,
-   which allows tenants to create their own tokens. Those are of cause
+   which allows tenants to create their own tokens. Those are of course
    limited to tenant-owned resources.
 -  **Server Tokens** are signed with the back-end server API secret,
    which allows back-end BBB servers to generate their own tokens. Those
@@ -59,7 +59,7 @@ Token Scopes
 
 The ``scope`` claim can be used to limit permissions for *Admin tokens*. The claim should be a space-separates string of scopes.
 
-Scopes have no effect for tenant- oder server-tokens. Those have hard-coded scopes and are limited to very specific actions.
+Scopes have no effect for tenant- or server-tokens. Those have hard-coded scopes and are limited to very specific actions.
 
 -  ``rec`` Manage recordings. This parent scope implies all ``rec:*`` scopes.
  
@@ -163,7 +163,7 @@ Parameter       Location  Description
 .. rubric:: Response
 
 Recording import triggers background tasks for the actual import. A
-``202 Accepted`` response will indicate that the upload was successfull,
+``202 Accepted`` response will indicate that the upload was successful,
 but the actual import will happen later.
 
 .. rubric:: Examples

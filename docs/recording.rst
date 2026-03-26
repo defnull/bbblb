@@ -11,7 +11,7 @@ Directory Structure
 
 BBBLB stores recordings and temporary files in subdirectories relative
 to the ``{PATH_DATA}/recordings/`` directory. The entire ``recordings``
-directory and all its subdirectores *should* be on the same file system
+directory and all its subdirectories *should* be on the same file system
 to ensure that move operations are atomic and fast.
 
 .. warning:: If you run multiple worker processes with BBBLB, all of them
@@ -109,7 +109,7 @@ What happens during a recording import?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When uploading a recording to the API, BBBLB generates a unique ``task``
-ID and creates an ``inbox/{task}.tar`` file. After a successfull upload,
+ID and creates an ``inbox/{task}.tar`` file. After a successful upload,
 the actual import task will be scheduled to execute in the background.
 
 The import task will try to create a ``work/{task}/`` directory and

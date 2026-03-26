@@ -10,7 +10,7 @@ Parsing raw `events.xml` files
 ==============================
 
 You could use tenant overrides to enforce `meetingKeepEvents=true` during meeting creation,
-and then collect and analyse the `events.xml` files from all your BBB servers.
+and then collect and analyze the `events.xml` files from all your BBB servers.
 
 This is the most detailed, but also most invasive approach because `events.xml` contains
 WAY more data than necessary, including participant names and chat messages, even
@@ -32,7 +32,7 @@ by tenant.
 
 These analytics JSON files are pre-processed and way easier to parse than raw `events.xml`
 files. They no longer contain (private) chats, but you will still find participant names
-in there, so don#t forget to speak to your *Data Protection Officer* about it. You also
+in there, so don't forget to speak to your *Data Protection Officer* about it. You also
 need to get rid of the `events.xml` files on your BBB servers in a timely manner to not
 get in conflict with GDPR.
 
@@ -59,7 +59,7 @@ quickly, especially for large or busy clusters. Make sure to delete old rows reg
 to keep your database size in check.
 
 The `meeting_stats` table is structured similar to a time series database. Each row has
-a timestamp (`ts`), the `uuid` of the meeting, the reuseable external `meeting_id` that
+a timestamp (`ts`), the `uuid` of the meeting, the reusable external `meeting_id` that
 was used to create the meeting, the owning tenant (`tenant_fk`), and three metric values
 named `users`, `voice` and `video`.
 
@@ -84,7 +84,7 @@ will have the exact same timestamp.
 
 Here is a more complex PostgreSQL example. It fetches all rows in a certain time range,
 calculates min/max/avg values per meeting (per `uuid`), then groups those together by
-`tenant_fk` to get meaningfull aggregated values per tenant.
+`tenant_fk` to get meaningful aggregated values per tenant.
 
 .. code:: sql
 
@@ -96,7 +96,7 @@ calculates min/max/avg values per meeting (per `uuid`), then groups those togeth
     SUM(users_avg * EXTRACT(epoch FROM duration)) / 60 AS meeting_minutes,
     /* Average meeting duration in minutes */ 
     AVG(EXTRACT(epoch FROM duration)) / 60 AS duration_avg, 
-    /* Aveage meeting size */ 
+    /* Average meeting size */ 
     AVG(users_avg) AS users_avg,
     /* Maximum meeting size */ 
     MAX(users_max) AS users_max,
