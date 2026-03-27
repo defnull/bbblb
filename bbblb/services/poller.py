@@ -40,7 +40,7 @@ class MeetingPoller(BackgroundService):
         self.timeout = self.interval * 1.1
         self.maxerror = config.POLL_FAIL
         self.minsuccess = config.POLL_RECOVER
-        self.stats_enabled = config.POLL_STATS
+
         self.db = db
         self.lock = locks.create(
             "poller", datetime.timedelta(seconds=self.interval) * 2
@@ -78,6 +78,7 @@ class MeetingPoller(BackgroundService):
                 LOG.warning(f"We lost the {self.lock.name!r} lock!?")
                 return
 
+            await self._trim_old_meeting_stats()
             async with self.db.session() as session:
                 result = await session.execute(model.Server.select())
                 servers = result.scalars()
@@ -166,7 +167,7 @@ class MeetingPoller(BackgroundService):
                     )
                     continue  # Ignore unknown meetings
 
-                if self.stats_enabled:
+                if self.config.POLL_STATS:
                     meeting = meetings[meeting_id]
                     meeting_stats.append(
                         model.MeetingStats(
@@ -262,3 +263,20 @@ class MeetingPoller(BackgroundService):
             load += ghosts * 0.1 * config.LOAD_VIDEO
 
         return load
+
+    async def _trim_old_meeting_stats(self):
+        """Clean up old meeting stats entries after POLL_STATS_DAYS."""
+
+        if not self.config.POLL_STATS:
+            return
+        if self.config.POLL_STATS_DAYS <= 0:
+            return
+
+        max_age = datetime.timedelta(days=self.config.POLL_STATS_DAYS)
+        async with self.db.connect() as conn:
+            stmt = model.MeetingStats.delete(
+                model.MeetingStats.ts < (model.utcnow() - max_age)
+            )
+            result = await conn.execute(stmt)
+            if result.rowcount > 0:
+                LOG.debug(f"Cleaned up {result.rowcount} meeting_stats entries")

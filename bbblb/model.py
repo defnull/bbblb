@@ -14,6 +14,7 @@ from sqlalchemy import (
     ColumnExpressionArgument,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     MetaData,
@@ -437,6 +438,11 @@ class Meeting(Base):
 
 class MeetingStats(Base):
     __tablename__ = "meeting_stats"
+    __table_args__ = (
+        # Postgres only, BRIN is cheap to maintain and very efficient
+        # for monotonic timestamps.
+        Index(None, "ts", postgresql_using="brin").ddl_if(dialect="postgresql"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     #: Timestamp of the poll run. This SHOULD be identical for all

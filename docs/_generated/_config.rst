@@ -95,10 +95,17 @@ or UNSTABLE server is considered to be AVAILABLE again.
 
 ``POLL_STATS`` (type: ``bool``, default: ``False``)
 
-Log meeting statistics into a database table.
-WARNING! There is no automatic cleanup! The table will grow by one row
-per meeting per `POLL_INTERVAL`. Make sure your database can handle
-it and won't slowly fill up your entire disk.
+Collect meeting statistics in the database.
+
+WARNING: The `meeting_stats` table will grow by one row per meeting
+per `POLL_INTERVAL`. Make sure your database can handle the number
+of days you configure with `POLL_STATS_DAYS`.
+
+``POLL_STATS_DAYS`` (type: ``int``, default: ``0``)
+
+Number of days after which meeting statistics are deleted.
+Statistics are kept indefinitely by default and the user is expected
+to clean up statictics data by some other means.
 
 ``LOAD_BASE`` (type: ``float``, default: ``5.0``)
 

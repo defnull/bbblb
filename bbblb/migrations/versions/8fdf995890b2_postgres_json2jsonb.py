@@ -1,7 +1,9 @@
 """
-Change multiple columns to JSONB, but only for postgres because sqlite
-does not support JSONB just yet. This change was necessary because postgres
-fails to SELECT DISTINCT on a JSON column.
+Change multiple columns to JSONB.
+
+Only effective for postgres because sqlite does not support JSONB just
+yet. This change was necessary because postgres fails to SELECT DISTINCT
+on a JSON column.
 
 Revision ID: 8fdf995890b2
 Revises: 80e8524b0d7c
