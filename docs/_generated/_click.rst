@@ -263,16 +263,16 @@ Manage BBB servers.
 .. table:: Sub-Commands
   :width: 100%
 
-  =========================================  =======================================================
-  Sub-Command                                Help                                                   
-  =========================================  =======================================================
-  :ref:`create <cli-bbblb-server-create>`    Create a new server or update a server secret.         
-  :ref:`enable <cli-bbblb-server-enable>`    Enable a server and make it available for new meetings.
-  :ref:`disable <cli-bbblb-server-disable>`  Disable a server and wait for meetings to end.         
-  :ref:`delete <cli-bbblb-server-delete>`    Remove an empty server from the server list.           
-  :ref:`list <cli-bbblb-server-list>`        List all servers with their secrets.                   
-  :ref:`stats <cli-bbblb-server-stats>`      Show server statistics (state, health, load).          
-  =========================================  =======================================================
+  =========================================  ========================================================
+  Sub-Command                                Help                                                    
+  =========================================  ========================================================
+  :ref:`create <cli-bbblb-server-create>`    Create a new server or update a server secret.          
+  :ref:`enable <cli-bbblb-server-enable>`    Enable servers and make them available for new meetings.
+  :ref:`disable <cli-bbblb-server-disable>`  Disable a server and wait for meetings to end.          
+  :ref:`delete <cli-bbblb-server-delete>`    Remove an empty server from the server list.            
+  :ref:`list <cli-bbblb-server-list>`        List all servers with their secrets.                    
+  :ref:`stats <cli-bbblb-server-stats>`      Show server statistics (state, health, load).           
+  =========================================  ========================================================
 
 .. _cli-bbblb-server-create:
 
@@ -299,39 +299,39 @@ Create a new server or update a server secret.
 server enable
 ^^^^^^^^^^^^^
 
-``Usage: bbblb server enable [OPTIONS] DOMAIN``
+``Usage: bbblb server enable [OPTIONS] [DOMAINS]...``
 
-Enable a server and make it available for new meetings.
+Enable servers and make them available for new meetings.
 
 .. table:: Options
   :width: 100%
 
-  ======  =======================================================
-  Option  Help                                                   
-  ======  =======================================================
-  DOMAIN  Required argument                                      
-  --now   Make the server immediately available for new meetings.
-  ======  =======================================================
+  =======  ==============================================================================
+  Option   Help                                                                          
+  =======  ==============================================================================
+  DOMAINS  Optional argument                                                             
+  --now    Skip health checks and make the server available for new meetings immediately.
+  =======  ==============================================================================
 
 .. _cli-bbblb-server-disable:
 
 server disable
 ^^^^^^^^^^^^^^
 
-``Usage: bbblb server disable [OPTIONS] DOMAIN``
+``Usage: bbblb server disable [OPTIONS] [DOMAINS]...``
 
 Disable a server and wait for meetings to end.
 
 .. table:: Options
   :width: 100%
 
-  ==============  =============================================================================================
-  Option          Help                                                                                         
-  ==============  =============================================================================================
-  DOMAIN          Required argument                                                                            
-  --nuke          End all meetings on this server.                                                             
-  --wait INTEGER  Wait for this many seconds for all meetings to end. A value of -1 waits forever  [default: 0]
-  ==============  =============================================================================================
+  ==============  ===============================================================================
+  Option          Help                                                                           
+  ==============  ===============================================================================
+  DOMAINS         Optional argument                                                              
+  --nuke          End all meetings immediately.                                                  
+  --wait INTEGER  Seconds to wait for meetings to end. A value of -1 waits forever.  [default: 0]
+  ==============  ===============================================================================
 
 .. _cli-bbblb-server-delete:
 

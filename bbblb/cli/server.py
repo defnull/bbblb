@@ -52,64 +52,85 @@ async def create(obj: ServiceRegistry, update: bool, domain: str, secret: str | 
 
 
 @server.command()
-@click.argument("domain")
+@click.argument("domains", nargs=-1)
 @click.option(
     "--now",
-    help="Make the server immediately available for new meetings.",
+    help="Skip health checks and make the server available for new meetings immediately.",
     is_flag=True,
 )
 @async_command()
-async def enable(obj: ServiceRegistry, domain: str, now: bool):
-    """Enable a server and make it available for new meetings."""
+async def enable(obj: ServiceRegistry, domains: list[str], now: bool):
+    """Enable servers and make them available for new meetings."""
+    if not domains:
+        raise click.BadParameter("Provide at least one value for DOMAINS")
+
     db = await obj.use(DBContext)
     async with db.session() as session:
-        server = (
-            await session.execute(model.Server.select(domain=domain))
-        ).scalar_one_or_none()
-        if not server:
-            click.echo(f"Server {domain!r} not found")
-            return
-        if server.enabled:
-            click.echo(f"Server {domain!r} already enabled")
-        else:
-            server.enabled = True
+        for domain in domains:
+            server = (
+                await session.execute(model.Server.select(domain=domain))
+            ).scalar_one_or_none()
+            if not server:
+                click.echo(f"Server {domain!r} not found")
+                raise SystemExit(1)
+            if server.enabled:
+                click.echo(f"Server {domain!r} already enabled")
+            else:
+                server.enabled = True
+                click.echo(f"Server {domain!r} enabled")
             if now:
                 server.mark_success(recover_threshold=0)
-            await session.commit()
-            click.echo(f"Server {domain!r} enabled")
+        await session.commit()
 
 
 @server.command()
-@click.argument("domain")
-@click.option("--nuke", help="End all meetings on this server.", is_flag=True)
+@click.argument("domains", nargs=-1)
+@click.option("--nuke", help="End all meetings immediately.", is_flag=True)
 @click.option(
     "--wait",
-    help="Wait for this many seconds for all meetings to end. A value of -1 waits forever",
+    help="Seconds to wait for meetings to end. A value of -1 waits forever.",
     type=int,
     default=0,
 )
 @async_command()
-async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
-    """Disable a server and wait for meetings to end."""
-    db = await obj.use(DBContext)
+async def disable(obj: ServiceRegistry, domains: list[str], nuke: bool, wait: int):
+    """Disable servers and optionally wait for meetings to end.
+    
+    Disabling a server by default does not interrupt running meetings,
+    it just prevents new meetings from being assigned to that server.
 
+    You can --wait for meetings to end on their own, or --nuke them.
+
+    If there are still running meetings after --wait seconds, the process
+    will end with status code `3`.
+    """
+    db = await obj.use(DBContext)
+    if not domains:
+        raise click.BadParameter("Provide at least one value for DOMAINS")
+
+    servers = []
     async with db.session() as session:
-        server = (
-            await session.execute(model.Server.select(domain=domain))
-        ).scalar_one_or_none()
-        if not server:
-            click.echo(f"Server {domain!r} not found")
-            return
+        for domain in domains:
+            server = (
+                await session.execute(
+                    model.Server.select(model.Server.domain == domain)
+                )
+            ).scalar_one_or_none()
+            if not server:
+                click.echo(f"Server {domain!r} not found")
+                raise SystemExit(1)
+            servers.append(server)
+            if not server.enabled:
+                click.echo(f"Server {domain!r} already disabled")
+            else:
+                server.enabled = False
+                click.echo(f"Server {domain!r} disabled")
+        await session.commit()
         if nuke:
-            meetings = await server.awaitable_attrs.meetings
-            for meeting in meetings:
-                await _end_meeting(obj, meeting)
-        if not server.enabled:
-            click.echo(f"Server {domain!r} already disabled")
-        else:
-            server.enabled = False
-            await session.commit()
-            click.echo(f"Server {domain!r} disabled")
+            for server in servers:
+                meetings = await server.awaitable_attrs.meetings
+                for meeting in meetings:
+                    await _end_meeting(obj, meeting)
 
     if wait:
         if wait < 0:
@@ -122,23 +143,26 @@ async def disable(obj: ServiceRegistry, domain: str, nuke: bool, wait: int):
         while True:
             async with db.session() as session:
                 stmt = (
-                    model.Meeting.select(model.Meeting.server == server)
+                    model.Meeting.select(
+                        model.Meeting.server_fk.in_([s.id for s in servers])
+                    )
                     .with_only_columns(func.count())
                     .order_by(None)
                 )
                 count = (await session.execute(stmt)).scalar()
 
             if count == 0:
-                click.echo("No meetings left on server")
+                click.echo("No meetings left on disabled servers")
                 return
 
             if time.time() + interval > maxwait:
-                raise RuntimeError(
-                    f"Server not empty: There are still {count} meetings running"
+                click.echo(
+                    f"Timeout while waiting for meetings to end: {count} meetings still running"
                 )
+                raise SystemExit(3)
 
             if last_count != count:
-                click.echo(f"Waiting for {count} meetings to end")
+                click.echo(f"Waiting for {count} meetings to end ...")
 
             last_count = count
             await asyncio.sleep(interval)
@@ -173,7 +197,7 @@ async def _delete(obj: ServiceRegistry, domain: str):
 
 async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
     server = await meeting.awaitable_attrs.server
-    tenant = await meeting.awaitable_attrs.server
+    tenant = await meeting.awaitable_attrs.tenant
     scoped_id = utils.add_scope(meeting.external_id, tenant.name)
     bbb = (await obj.use(BBBHelper)).connect(meeting.server.api_base, server.secret)
 
