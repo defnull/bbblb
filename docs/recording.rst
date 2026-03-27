@@ -2,7 +2,7 @@ Recording Internals
 ===============================
 
 In a cluster setup, recordings usually do not stay on the BBB nodes
-there were created on, but are transferred to the loadbalancer and made
+they were created on, but are transferred to the loadbalancer and made
 available via the same URL users and applications use to access the
 cluster. Here is how that works.
 
@@ -83,7 +83,7 @@ Recover from a crash
 
 The importer will pick up all tasks from the
 ``{PATH_DATA}/recordings/inbox/`` directory on startup, so even after a
-crash, the is usually no need to intervene. If you notice that some
+crash, there is usually no need to intervene. If you notice that some
 files in the inbox directory are not processed after a crash, follow
 these steps:
 
@@ -130,7 +130,7 @@ an already imported recording, delete it first.
 
 Next, the database entries for the recording and individual playback
 formats are created. If they already exists, they are not updated. The
-frontend may have already published or updated the recording, we to not
+frontend may have already published or updated the recording, we do not
 want to overwrite those changes. To actually replace an already imported
 recording, delete it first.
 

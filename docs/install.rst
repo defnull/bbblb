@@ -6,7 +6,7 @@ Installation
 
 There are several ways to deploy BBBLB:
 
-* **Docker Compose:** Run BBBLB, `Postgres <hhttps://www.postgresql.org/>`_ and `Caddy <https://caddyserver.com/docs/install#docker>`_ on a single VM with `docker compose <https://docs.docker.com/compose/>`_. This is the recommended way to get started and is suitable for most production deployments. 
+* **Docker Compose:** Run BBBLB, `Postgres <https://www.postgresql.org/>`_ and `Caddy <https://caddyserver.com/docs/install#docker>`_ on a single VM with `docker compose <https://docs.docker.com/compose/>`_. This is the recommended way to get started and is suitable for most production deployments. 
 * **Kubernetes:** Let's be honest, most deployments do not actually benefit from the added complexity of Kubernetes, but if you absolutely need redundancy or high availability, this is the way to go. If you are in that position, you probably know already how to pull this of and won't need a tutorial. Good luck! (PRs welcome)
 * **Manual:** If you hate containers and already have a Postgres database server and front-end web server up and running, you could also run BBBLB with systemd and connect the dots yourself. While not recommended, that's absolutely possible.
 * **Standalone:** BBBLB *can* run as a standalone application with an embedded HTTP(S) server (uvicorn) and database (sqlite). While this is nice for quick tests and development, it is not the recommended way to run BBBLB in production.
