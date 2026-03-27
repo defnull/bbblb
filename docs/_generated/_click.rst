@@ -268,8 +268,8 @@ Manage BBB servers.
   =========================================  ========================================================
   :ref:`create <cli-bbblb-server-create>`    Create a new server or update a server secret.          
   :ref:`enable <cli-bbblb-server-enable>`    Enable servers and make them available for new meetings.
-  :ref:`disable <cli-bbblb-server-disable>`  Disable a server and wait for meetings to end.          
-  :ref:`delete <cli-bbblb-server-delete>`    Remove an empty server from the server list.            
+  :ref:`disable <cli-bbblb-server-disable>`  Disable servers and optionally wait for meetings to end.
+  :ref:`delete <cli-bbblb-server-delete>`    Remove an empty server from the cluster.                
   :ref:`list <cli-bbblb-server-list>`        List all servers with their secrets.                    
   :ref:`stats <cli-bbblb-server-stats>`      Show server statistics (state, health, load).           
   =========================================  ========================================================
@@ -320,7 +320,15 @@ server disable
 
 ``Usage: bbblb server disable [OPTIONS] [DOMAINS]...``
 
-Disable a server and wait for meetings to end.
+Disable servers and optionally wait for meetings to end.
+
+Disabling a server by default does not interrupt running meetings,
+it just prevents new meetings from being assigned to that server.
+
+You can --wait for meetings to end on their own, or --nuke them.
+
+If there are still running meetings after --wait seconds, the process
+will end with status code `3`.
 
 .. table:: Options
   :width: 100%
@@ -340,7 +348,9 @@ server delete
 
 ``Usage: bbblb server delete [OPTIONS] DOMAIN``
 
-Remove an empty server from the server list.
+Remove an empty server from the cluster.
+
+The command will fail if the server still has running meetings.
 
 .. table:: Options
   :width: 100%

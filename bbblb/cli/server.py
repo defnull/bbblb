@@ -172,7 +172,10 @@ async def disable(obj: ServiceRegistry, domains: list[str], nuke: bool, wait: in
 @click.argument("domain")
 @async_command()
 async def _delete(obj: ServiceRegistry, domain: str):
-    """Remove an empty server from the server list."""
+    """Remove an empty server from the cluster.
+
+    The command will fail if the server still has running meetings.
+    """
     db = await obj.use(DBContext)
     async with db.session() as session:
         server = (
@@ -181,8 +184,6 @@ async def _delete(obj: ServiceRegistry, domain: str):
         if not server:
             click.echo(f"Server {domain!r} not found")
             return
-        if server.enabled:
-            click.echo(f"Server {domain!r} not disabled")
         stmt = (
             model.Meeting.select(model.Meeting.server == server)
             .with_only_columns(func.count())
@@ -190,7 +191,7 @@ async def _delete(obj: ServiceRegistry, domain: str):
         )
         if (await session.execute(stmt)).scalar() or 0 > 0:
             click.echo(f"Server {domain!r} not empty")
-            return
+            raise SystemExit(3)
         await session.delete(server)
     click.echo(f"Server {domain!r} removed")
 
