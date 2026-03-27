@@ -546,13 +546,15 @@ async def handle_get_meetings(ctx: BBBApiRequest):
     async with ctx.session as session:
         tenant = await ctx.require_tenant()
         params = await ctx.require_bbb_query()
-        # Find all servers that currently have matching meetings
-        stmt = (
-            model.Server.select(model.Meeting.tenant == tenant)
-            .join(model.Meeting)
-            .distinct()
+        # Find all servers that currently may have matching meetings
+        stmt = model.Server.select(
+            model.Server.id.in_(
+                model.Meeting.select(model.Meeting.server_fk).where(
+                    model.Meeting.tenant == tenant
+                )
+            )
         )
-        servers = (await session.execute(stmt)).scalars()
+        servers = (await session.execute(stmt)).scalars().all()
 
     result_xml = typing.cast(Element, XML.response(XML.returncode("SUCCESS")))
     all_meetings = SubElement(result_xml, "meetings")
