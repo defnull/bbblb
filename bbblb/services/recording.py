@@ -119,7 +119,7 @@ def _format_from_metadata(metadata_xml: "FormatXMLWrapper", recording: model.Rec
     return model.PlaybackFormat(
         recording=recording,
         format=metadata_xml.format,
-        xml=lxml.etree.tostring(metadata_xml.playback_node).decode("UTF-8"),
+        xml=lxml.etree.tostring(metadata_xml.playback_node).decode("ASCII"),
     )
 
 

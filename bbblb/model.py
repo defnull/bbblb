@@ -545,7 +545,8 @@ class PlaybackFormat(Base):
     recording: Mapped[Recording] = relationship(back_populates="formats")
     format: Mapped[str] = mapped_column(nullable=False)
 
-    # We need this for getMeetings search results, so store it ...
+    # Parts of the XML can contain arbitrary extentions, so we keep it
+    # around for getRecordings requests.
     xml: Mapped[str] = mapped_column(nullable=False)
 
 
