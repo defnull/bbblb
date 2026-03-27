@@ -30,7 +30,7 @@ async def recording(obj: ServiceRegistry):
 async def _list(obj: ServiceRegistry, tenant: str, format: str):
     """List all recordings and their formats"""
     db = await obj.use(DBContext)
-    async with db.session() as session, session.begin():
+    async with db.session() as session:
         stmt = (
             model.Recording.select()
             .join(model.Recording.tenant)

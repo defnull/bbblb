@@ -73,7 +73,7 @@ class Table:
         self._headers.update(headers)
 
     def row(self, **values):
-        """Add a row to the table, pamming column names ot values.
+        """Add a row to the table, mapping column names to values.
 
         Missing columns are stored as `None`. Previously unknown columns
         are added to the table.

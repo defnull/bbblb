@@ -75,7 +75,7 @@ async def enable(obj: ServiceRegistry, name: str):
             return
         tenant.enabled = True
         await session.commit()
-        click.echo(f"Tenant {tenant!r} disabled")
+        click.echo(f"Tenant {tenant!r} enabled")
 
 
 @tenant.command()

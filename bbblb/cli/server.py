@@ -95,7 +95,7 @@ async def enable(obj: ServiceRegistry, domains: list[str], now: bool):
 @async_command()
 async def disable(obj: ServiceRegistry, domains: list[str], nuke: bool, wait: int):
     """Disable servers and optionally wait for meetings to end.
-    
+
     Disabling a server by default does not interrupt running meetings,
     it just prevents new meetings from being assigned to that server.
 

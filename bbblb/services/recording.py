@@ -420,8 +420,6 @@ class RecordingManager(BackgroundService):
     def ensure_unpublished(self, tenant: str, record_id: str):
         """Ensure no formats for this recording has a symlink in the
         public directory on disk."""
-
-        """Unpublish all formats for a given recording on disk."""
         tenant = _sanity_pathname(tenant)
         record_id = _sanity_pathname(record_id)
 
@@ -1023,7 +1021,7 @@ class ConsistencyChecker:
     ) -> model.Recording | None:
         if await self._should_autofix(
             FixCategory.ORPHAN,
-            "Recording formnat found in database but not in disk",
+            "Recording format found in database but not in disk",
             "Remove orphaned recording format from database",
             tenant=recording.tenant.name,
             record_id=recording.record_id,
