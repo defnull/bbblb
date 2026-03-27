@@ -1,26 +1,28 @@
 # BBBLB: BigBlueButton Load Balancer
 
-BBBLB (BigBlueButton Load Balancer) is yet another load balancer for [BigBlueButton](https://bigbluebutton.org/). It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
+BBBLB (BigBlueButton Load Balancer) is a modern load balancer for [BigBlueButton](https://bigbluebutton.org/). It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
 
 > :warning: BBBLB is used in production, but still a very new project that may have some rough edges. Some APIs or features may not be stable yet and upgrades may break things. If you are looking for a stable solution that *just works*, better wait for the 1.0 release. But if you know what you are doing, go ahead and give it a try.
 
+
 ## Documentation
 
-Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/` folder. This is still a work in progress. Pull requests are very welcomed! Maybe join the [Matrix chat](https://matrix.to/#/#bbblb:matrix.org) to help each other out.
+Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/` folder. Pull requests are very welcome! Join the [Matrix chat](https://matrix.to/#/#bbblb:matrix.org) if you have any questions or feedback.
 
 
 ## Features
 
 * **Multi-Tenancy:** Allow multiple front-end applications or customers to share the same BigBlueButton cluster while keeping their meetings and recordings strictly separated.
-* **Advanced Loadbalancing:** Meetings are distributed based on current and predicted utilization, taking common usage patterns into account and avoiding the infamous ‘trampling herd’ problem.
-* **Recording Management:** Recordings are transferred from the BBB servers to central storage via a simple and robust post_publish script. No special configuration, ssh transfers or shared network file system necessary.
+* **Advanced Loadbalancing:** Meetings are distributed based on current and predicted utilization, taking common usage patterns into account.
+* **Recording Management:** Recordings are transferred to central storage with a robust post_publish.rb script installed on each BBB backend server. This script just needs to sit in the correct directory, it does not require any configuration, ssh access or shared network file system to work.
 * **Callback Relay:** Callbacks registered for a meeting are properly relayed between the back-end BBB server and the front-end application with a robust retry-mechanism.
-* **Management API:** BBBLB offers its own API and command line tool to fetch health information, manage tenants, servers or recordings, or perform maintenance tasks.
-* **Easy to deploy:** At least easier than most other BigBlueButton Load Balancer implementations.
+* **Management CLI and API:** BBBLB comes with a rich command line tool to fetch health information, manage tenants, servers or recordings, or automate maintenance tasks.
+* **Scalability:** BBBLB is a modern async python application with low overhead and can easily scale to large clusters with thousands of active meetings. 
+
 
 ## Architecture
 
-BBBLB acts as a central API gateway, intelligently routing API requests and distributing meetings across a scaleable pool of BigBlueButton instances.
+BBBLB acts as a central API gateway, intelligently routing API requests and distributing meetings across a scaleable pool of BigBlueButton instances. For the front-end application, BBBLB looks like a single BigBlueButton server.
 
 ```mermaid
 ---
@@ -46,6 +48,15 @@ graph TD
     BBBLB -->|BBB API| BBBN
 ```
 
+Recordings are stored and managed centrally on the BBBLB server, separated
+by tenant, which allows you to remove or replace BigBlueButton servers
+without losing access to past recordings.
+
+Rolling cluster upgrades without downtime are also fully supported. With 
+`bbblb server disable` you can disable some of your back-end servers
+without interrupting running meetings, `--wait` for them to drain empty,
+then perform your maintenance tasks and enable the servers again when
+ready.
 
 # Sponsors
 
