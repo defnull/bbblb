@@ -163,7 +163,7 @@ async def main(ctx, obj, config_file, config, verbose):
 
     config_.populate()
     config_.set(WORKER=False)
-    ctx.obj = await bootstrap(config_, autostart=False, logging=False)
+    ctx.obj = await bootstrap(config_, logging=False)
 
 
 # Auto-load all modules in the bbblb.cli package to load all commands.

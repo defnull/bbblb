@@ -51,7 +51,7 @@ def config(db_url, tmp_path):
 
 @pytest_asyncio.fixture(scope="function")
 async def services(config: bbblb.settings.BBBLBConfig):
-    services = await bbblb.services.bootstrap(config, autostart=False)
+    services = await bbblb.services.bootstrap(config)
     async with services:
         yield services
 

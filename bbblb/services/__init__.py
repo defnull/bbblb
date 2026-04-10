@@ -285,9 +285,7 @@ def configure_logging(config: BBBLBConfig):
         )
 
 
-async def bootstrap(
-    config: BBBLBConfig, autostart=True, logging=True
-) -> ServiceRegistry:
+async def bootstrap(config: BBBLBConfig, logging=True) -> ServiceRegistry:
     import bbblb.services.poller
     import bbblb.services.recording
     import bbblb.services.analytics
@@ -316,9 +314,6 @@ async def bootstrap(
     ctx.register(bbblb.services.recording.RecordingManager)
     ctx.register(bbblb.services.analytics.AnalyticsHandler)
     ctx.register(bbblb.services.tenants.TenantCache)
-
-    if autostart:
-        await ctx.start_all()
 
     LOG.debug("Bootstrapping completed!")
 

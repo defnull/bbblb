@@ -39,7 +39,7 @@ class ApiRequestContext:
 
     @cached_property
     def config(self) -> BBBLBConfig:
-        return cast(BBBLBConfig, self.request.app.state.config)
+        return self.services.get(BBBLBConfig)
 
     @cached_property
     def bbb(self) -> BBBHelper:
@@ -135,8 +135,10 @@ def make_app(config: BBBLBConfig | None = None, autostart=True):
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
-        services = await bbblb.services.bootstrap(config, autostart=autostart)
+        services = await bbblb.services.bootstrap(config)
         async with services:
+            if autostart:
+                await services.start_all()
             app.state.config = config
             app.state.services = services
             yield
