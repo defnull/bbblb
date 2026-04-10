@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 from contextlib import asynccontextmanager
-from functools import partial
 from starlette.applications import Starlette
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
@@ -61,18 +60,6 @@ class ApiRequestContext:
         return self.db.session()
 
 
-# Playback formats for which we know that they sometimes expect their files
-# in /{format}/* instead of the default /playback/{format}/* path.
-PLAYBACK_FROM_ROOT_FORMATS = ("presentation", "video")
-
-
-async def format_redirect_app(format, scope, receive, send):
-    assert scope["type"] == "http"
-    path = scope["path"].lstrip("/")
-    response = RedirectResponse(url=f"/playback/{format}/{path}")
-    await response(scope, receive, send)
-
-
 def redirect(src, dst):
     async def handler(request):
         return RedirectResponse(url=dst)
@@ -80,34 +67,30 @@ def redirect(src, dst):
     return Route(src, endpoint=handler)
 
 
-def make_routes(config: BBBLBConfig):
-    from bbblb.web import bbbapi, bbblbapi
+async def collect_routes(sr: ServiceRegistry):
+    from bbblb.web import bbbapi, bbblbapi, playback
 
-    playback_dir = config.PATH_DATA / "recordings" / "public"
-    playback_dir.mkdir(parents=True, exist_ok=True)
+    config = await sr.use(BBBLBConfig)
     static_dir = config.PATH_DATA / "htdocs"
     static_dir.mkdir(parents=True, exist_ok=True)
 
     return [
         Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
         Mount("/bbblb/api", routes=bbblbapi.api_routes),
-        # Serve /playback/* files in case the reverse proxy in front if BBBLB does not.
+        Mount(
+            "/playback/presentation/2.3/{record_id}",
+            app=playback.PlaybackPlayerApp(config),
+            name="bbb:playback:player",
+        ),
         Mount(
             "/playback",
-            app=StaticFiles(
-                directory=playback_dir,
-                check_dir=False,
-                follow_symlink=True,
-            ),
-            name="bbb:playback",
+            app=playback.PlaybackMediaApp(config, await sr.use(DBContext)),
+            name="bbb:playback:media",
         ),
         # Redirect misguided playback file requests to the real path. We send
         # redirects instead of real files in case a reverse proxy in front if BBBLB
-        # serves /playback/* for us more efficiently.
-        *[
-            Mount(f"/{format}", app=partial(format_redirect_app, format))
-            for format in PLAYBACK_FROM_ROOT_FORMATS
-        ],
+        # serves /playback/* for us.
+        *playback.PLAYBACK_FORMAT_REDIRECTS,
         # Redirect non-slash requests to prefix mounts, because automatic slash handling
         # breaks if there are other routes matching the non-slash request :/
         redirect("/bigbluebutton/api", "/bigbluebutton/api/"),
@@ -139,8 +122,9 @@ def make_app(config: BBBLBConfig | None = None, autostart=True):
         async with services:
             if autostart:
                 await services.start_all()
-            app.state.config = config
+            app.router.routes.extend(await collect_routes(services))
             app.state.services = services
+
             yield
 
-    return Starlette(debug=config.DEBUG, routes=make_routes(config), lifespan=lifespan)
+    return Starlette(debug=config.DEBUG, lifespan=lifespan)

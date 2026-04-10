@@ -4,6 +4,7 @@
 import logging
 import os
 from pathlib import Path
+import lxml.etree
 import pytest
 import pytest_asyncio
 import bbblb.model
@@ -75,10 +76,35 @@ async def orm(db: bbblb.services.db.DBContext):
         yield session
 
 
+@pytest_asyncio.fixture(scope="function")
+async def test_tenant(orm: bbblb.model.AsyncSession):
+    tenant = bbblb.model.Tenant(name="test", realm="bbb.example.com", secret="test")
+    orm.add(tenant)
+    await orm.commit()
+    return tenant
+
+
+class BBBTestClient(TestClient):
+    def bbb_api_request(self, tenant: bbblb.model.Tenant, action: str, **query):
+        import bbblb.lib.bbb
+
+        url = f"/bigbluebutton/api/{action}"
+        url += "?" + bbblb.lib.bbb.sign_query(action, query, tenant.secret)
+        rs = self.get(url=url, headers={"Host": tenant.realm})
+        return rs
+
+    def bbb_api_request_xml(self, tenant: bbblb.model.Tenant, action: str, **query):
+        rs = self.bbb_api_request(tenant, action, **query)
+        assert "xml" in rs.headers["content-type"]
+        xml = lxml.etree.fromstring(rs.content)
+        assert xml.findtext("returncode") == "SUCCESS"
+        return rs, xml
+
+
 @pytest.fixture(scope="function")
 def client(config: bbblb.settings.BBBLBConfig):
     app = bbblb.web.make_app(config, autostart=False)
-    with TestClient(app) as client:
+    with BBBTestClient(app, base_url=f"http://{config.DOMAIN}") as client:
         yield client
 
 

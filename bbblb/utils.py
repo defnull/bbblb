@@ -1,6 +1,8 @@
 # Copyright (C) 2025, 2026  Marcel Hellkamp
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import hashlib
+import hmac
 import typing
 import re
 
@@ -64,3 +66,18 @@ def checked_cast(type_: type[T], value: typing.Any) -> T:
     if isinstance(value, type_):
         return value
     raise TypeError(f"Expected {type_} but got {type(value)}")
+
+
+def hmac_sign(payload: str, secret: str) -> str:
+    sig = hmac.digest(secret.encode("UTF8"), payload.encode("UTF8"), hashlib.sha256)
+    return f"{sig.hex()}:{payload}"
+
+
+def hmac_verify(untrtusted: str, secret: str) -> str | None:
+    sig, sep, payload = untrtusted.partition(":")
+    if sig and sep:
+        check = hmac.digest(
+            secret.encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
+        )
+        if hmac.compare_digest(check, bytes.fromhex(sig)):
+            return payload

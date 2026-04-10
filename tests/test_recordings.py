@@ -55,14 +55,6 @@ async def run_import(rm: RecordingManager, name, force_tenant=None):
     return task, rec_meta
 
 
-@pytest_asyncio.fixture(scope="function")
-async def test_tenant(orm: AsyncSession):
-    tenant = model.Tenant(name="test", realm="bbb.example.com", secret="test")
-    orm.add(tenant)
-    await orm.commit()
-    return tenant
-
-
 @pytest.mark.parametrize("rec_name", ["video", "presentation"])
 async def test_import(
     rec_name: str,

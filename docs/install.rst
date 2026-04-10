@@ -146,7 +146,7 @@ There are multiple ways to tackle this:
 
 .. rubric:: Option 1: Piggyback on BBB
 
-BBB already ships and serves the presentation player, so why not use that? Forward all requests for `/playback/presentation/2.3/*` to one of your BBB back-end servers.
+BBB already ships and serves the presentation player, so why not use that? Proxy all requests for `/playback/presentation/2.3/*` to one of your BBB back-end servers.
 
 In nginx, this would look like this::
 
@@ -162,9 +162,78 @@ The player that comes with BBB expects media files in ``/presentation/{record_id
 
 .. rubric:: Option 2: Build and serve your own
 
-You can of course also build and serve your own copy of `bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__. The docker-compose API does exactly that. This has the added benefit that you can set ``REACT_APP_MEDIA_ROOT_URL=/playback/presentation/`` during build and skip the redirect from `/presentation/` explained earlier.
+You can of course also build and serve your own copy of `bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__. The docker-compose example does exactly that. This has the added benefit that you can set ``REACT_APP_MEDIA_ROOT_URL=/playback/presentation/`` during build and skip the `/presentation/` redirect explained earlier.
 
-Remember to regularly check for updates, because the player evolves alongside BBB and old versions may not be able to playback new recordings.
+If you want BBBLB to serve the player files, put them in ``{PATH_DATA}/htdocs/playback/presentation/2.3/``. But if you have a front-end webserver, it's usually best to serve those files directly from disk. 
+
+In any case, remember to regularly check for updates. The player evolves alongside BBB and old versions may not be able to play new recordings.
+
+
+Protected Recordings
+====================
+
+A *published* recording is accessable by anyone who knows the link, and those links are very hard to control or restrict. Scalelite introduced a non-standard API extention called *Protected recordings* to prevent users from sharing recording links with others, or at least make link-sharing more difficult. BBBLB also implements this feature, but slightly different. Read the following instructions very carefully or you risk not protecting your recordings at all.
+
+First, a disclaimer: *Protected recordings* only make link-sharing harder, they do not prevent users from downloading those files and share them offline, or  upload them to other services. There is no real protection, skilled users will always be able to share recordings one way or the other. Keep that in mind.
+
+Now that we got this out of the way, let's talk about how *Protected recordings* work and what they actually do.
+
+Recordings are unprotected by default. When `PROTECTED_RECORDINGS` is enabled, then BBBLB will add the non-standard `<protected>true|false</protected>` XML tag to all recordings returned by the `getRecordings` API. Supporting front-end applications can now call `updateRecordings` with `protect=true` or `protect=false` to enable or disable protection for specific recordings.
+
+If a recording is marked as protected, then BBBLB will replace all playback links in `getRecordings` responses with a single-use ticket link. Only the first visitor will be able to exchange the ticket for a cookie, that will then allow them to watch the protected recording for the next `PROTECTED_RECORDINGS_TIMEOUT` minutes. The ticket-link continues to work for the user with the cookie, but all other visitors will get an error.
+
+Extra steps for edge webservers, proxies or CDN
+-----------------------------------------------
+
+.. attention::
+
+    If you configured your webserver to serve `/playback/*` media files directly from disk or use a CDN, proxy or cache, then you MUST ensure it is configure in a specific way for the protection to actually work.
+
+If you defined `PLAYBACK_DOMAIN`, than this server MUST proxy requests for `/bbblb/api/v1/recording/ticket/*` to BBBLB. A client-side redirect is not enough. Those ticket-links must be served directly from `PLAYBACK_DOMAIN`, or cookie won't stick. You can ignore this step if you serve recordings from the same domain as BBBLB itself, which is the default.
+
+If you do not forward `/playback/*` requests to BBBLB, but serve those media files directly from disk or cache, then you MUST authorize every single request against BBBLB to enforce protection. For this, the webserver/proxy/cache/CDN should send a copy of the original request (including cookies) to `/bbblb/api/v1/recording/auth/{original_uri}` and reject the original request if this auth check fails. Both nginx and caddy have built-in support for this type of auth check.
+
+Note that requests to `/playback/presentation/2.3/*` should NOT be checked against the BBBLB auth API. Yes, this is annoying, but that specific path should return static `bbb-playback`` presentation player assets which do not need protection.
+
+For nginx, replace the `location /playback` block with these rules::
+
+    location /playback {
+        set $auth_uri $request_uri;
+        auth_request /playback_auth;
+        alias /path/to/recordings/public/;
+    }
+
+    location = /playback_auth {
+        internal;
+        proxy_pass http://bbblb:8000/bbblb/api/v1/recording/auth$auth_uri;
+        proxy_pass_request_body off;
+        proxy_set_method GET;
+        proxy_set_header Content-Length "";
+    }
+
+    # Only necessary if you have a separate PLAYBACK_DOMAIN configured
+    # and do not serve BBBLB from this domain.
+    location /bbblb/api/v1/recording/ticket/ {
+        proxy_pass http://bbblb:8000;
+    }
+
+For caddy, it's a bit easier. The `forward_auth` rule does exactly what we need::
+
+    handle_path /playback/* {
+        forward_auth bbblb:8080 {
+          uri /bbblb/api/v1/recording/auth/playback{uri}
+        }
+        root * /path/to/recordings/public
+        file_server
+    }
+
+    # Only necessary if you have a separate PLAYBACK_DOMAIN configured
+    # and do not serve BBBLB from this domain.
+    reverse_proxy /bbblb/api/v1/recording/ticket/* bbblb:8000
+
+
+Note that the *protected recording* feature adds significant overhead to every single media file request and can cause issues for popular recordings, even if those are not protected. The auth check will always be triggered and BBBLB always needs to check the protection status of the requested recording, which is a DB lookup. Only enable this feature if you really need it. If you do, then test it! There are many things that can go wrong here. 
+
 
 Serving Static Files
 ====================
