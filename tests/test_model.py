@@ -14,8 +14,8 @@ async def insert_testdata(orm: AsyncSession):
             record_id="123",
             external_id="123",
             state=model.RecordingState.PUBLISHED,
-            started=datetime.now(),
-            ended=datetime.now(),
+            started=model.utcnow(),
+            ended=model.utcnow(),
             tenant=tenant,
         )
         playback = model.PlaybackFormat(recording=record, format="presentation", xml="")

@@ -148,6 +148,29 @@ class IntEnum(TypeDecorator):
             return None
 
 
+class TZDateTime(TypeDecorator):
+    """A DateTime column type that stores timestamps as UTC without
+    timezone, but returns `datetime` with a timezone.
+
+    This is a workaround for sqlalchemy+sqlite3 which ignores DateTime(timezone)
+    setting and returns `datetime` objects without a timezone."""
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if not value.tzinfo or value.tzinfo.utcoffset(value) is None:
+                raise TypeError("tzinfo is required")
+            value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=datetime.timezone.utc)
+        return value
+
+
 class ORMMixin:
     @classmethod
     def select(cls, *a, **filter):
@@ -205,7 +228,7 @@ class Lock(Base):
     name: Mapped[str] = mapped_column(primary_key=True)
     owner: Mapped[str] = mapped_column(nullable=False)
     ts: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), insert_default=utcnow, onupdate=utcnow, nullable=False
+        TZDateTime(), insert_default=utcnow, onupdate=utcnow, nullable=False
     )
 
     def __str__(self):
@@ -426,10 +449,10 @@ class Meeting(Base):
     server: Mapped["Server"] = relationship(lazy=False)
 
     created: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), insert_default=utcnow, nullable=False
+        TZDateTime(), insert_default=utcnow, nullable=False
     )
     modified: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), insert_default=utcnow, onupdate=utcnow, nullable=False
+        TZDateTime(), insert_default=utcnow, onupdate=utcnow, nullable=False
     )
 
     def __str__(self):
@@ -449,7 +472,7 @@ class MeetingStats(Base):
     #: entries created during the same poll interval, so we can group
     #: over the timestamp later.
     ts: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), insert_default=utcnow, nullable=False
+        TZDateTime(), insert_default=utcnow, nullable=False
     )
     uuid: Mapped[UUID] = mapped_column(nullable=False)
     meeting_id: Mapped[str] = mapped_column(nullable=False)
@@ -482,7 +505,7 @@ class Callback(Base):
     #: Original callback URL (optional)
     forward: Mapped[str] = mapped_column(nullable=True)
     created: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), insert_default=utcnow, nullable=False
+        TZDateTime(), insert_default=utcnow, nullable=False
     )
 
 
@@ -510,12 +533,8 @@ class Recording(Base):
     )
 
     # Non-essential but nice to have attributes
-    started: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
-    ended: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    started: Mapped[datetime.datetime] = mapped_column(TZDateTime(), nullable=False)
+    ended: Mapped[datetime.datetime] = mapped_column(TZDateTime(), nullable=False)
     participants: Mapped[int] = mapped_column(nullable=False, default=0)
 
     @validates("meta")
