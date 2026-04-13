@@ -401,7 +401,12 @@ async def handle_protected_recording_link(ctx: BBBLBApiRequest):
         return Response("Invalid recording link", 404)
 
     ticket_uuid = ctx.request.path_params["ticket_uuid"]
-    ticket = await ctx.session.get(model.ViewTicket, uuid.UUID(ticket_uuid))
+    try:
+        ticket_id = uuid.UUID(ticket_uuid)
+    except ValueError:
+        return Response("Invalid recording link", 404)
+
+    ticket = await ctx.session.get(model.ViewTicket, ticket_id)
     if not ticket or ticket.is_expired():
         return Response("This recording link is expired", 403)
 

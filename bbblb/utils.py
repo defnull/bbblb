@@ -14,7 +14,7 @@ MAX_MEETING_ID_LEN = 256
 # Common regular expressions
 RE_MEETING_ID = re.compile("^[a-zA-Z0-9-_]{2,%d}$" % MAX_MEETING_ID_LEN)
 RE_FORMAT_NAME = re.compile("^[a-zA-Z0-9]{1,64}$")
-RE_RECORD_ID = re.compile("^[0-9a-fA-F]+-\\d+$")
+RE_RECORD_ID = re.compile("^[0-9a-f]{40}-\\d{12,}$")
 RE_TENANT_NAME = re.compile("^[a-zA-Z0-9]{1,%d}$" % MAX_TENANT_NAME_LEN)
 
 
@@ -79,5 +79,8 @@ def hmac_verify(untrtusted: str, secret: str) -> str | None:
         check = hmac.digest(
             secret.encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
         )
-        if hmac.compare_digest(check, bytes.fromhex(sig)):
-            return payload
+        try:
+            if hmac.compare_digest(check, bytes.fromhex(sig)):
+                return payload
+        except ValueError:
+            pass

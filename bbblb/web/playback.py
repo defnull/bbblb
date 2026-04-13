@@ -33,9 +33,9 @@ def split_media_path(path: str) -> tuple[str, str, str] | None:
         parts.append("")
     format, record, resource = parts
     # Some basic sanity checks
-    if not (format.isalnum() and 1 <= len(format) <= 32):
+    if not utils.RE_FORMAT_NAME.match(format):
         return None
-    if not (len(record) >= 52 and record[40] == "-" and record[41:].isdigit()):
+    if not utils.RE_RECORD_ID.match(record):
         return None
     return format, record, resource
 
@@ -66,10 +66,10 @@ def verify_prt_cookie(value: str, record_id: str, conf: BBBLBConfig):
     payload = utils.hmac_verify(value, "prc" + conf.SECRET)
     if not payload or ":" not in payload:
         return False
-    ts, _, rid = payload.partition(":")
-    if rid != record_id or not ts.isdecimal():
+    expire, _, rid = payload.partition(":")
+    if rid != record_id or not expire.isdecimal():
         return False
-    if int(ts) < time.time() - conf.PROTECTED_RECORDINGS_TIMEOUT * 60:
+    if int(expire) < time.time():
         return False
     return True
 
