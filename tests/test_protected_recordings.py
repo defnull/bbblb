@@ -5,16 +5,9 @@ from datetime import timedelta
 import uuid
 
 import pytest
-import pytest_asyncio
-from bbblb.lib.bbb import sign_query
-from bbblb.services.tenants import TenantCache
 from bbblb.settings import BBBLBConfig
 from conftest import BBBTestClient, TestClient
-import lxml.etree
-from unittest.mock import MagicMock
-import bbblb.web.bbbapi
 from bbblb import model
-from bbblb.services import ServiceRegistry
 import bbblb.web.playback as bwp
 
 
@@ -57,6 +50,25 @@ async def test_ticket(client: TestClient, orm: model.AsyncSession):
     # Ticket cleanup
     await orm.execute(model.ViewTicket.delete_expired())
     assert (await orm.get(model.ViewTicket, ticket.uuid)) is None
+
+
+async def test_signed_ticket_cookie(config: BBBLBConfig):
+    record_id = "1234567890abcdef1234567890abcdef12345678-1775488952000"
+    valid_cookie = bwp.sign_prt_cookie(
+        record_id,
+        model.utcnow() + timedelta(minutes=1),
+        config,
+    )
+    assert bwp.verify_prt_cookie(valid_cookie, record_id, config)
+    assert not bwp.verify_prt_cookie(valid_cookie, record_id.replace("a", "b"), config)
+
+    expired_cookie = bwp.sign_prt_cookie(
+        record_id,
+        model.utcnow() - timedelta(seconds=1),
+        config,
+    )
+
+    assert not bwp.verify_prt_cookie(expired_cookie, record_id, config)
 
 
 async def test_get_recordings_protected(
