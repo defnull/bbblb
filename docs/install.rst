@@ -110,7 +110,7 @@ On the BBB server, run::
 Serving Recordings
 ==================
 
-To allow clients to watch recordings, you need to serve the *media files* from the ``https://{PLAYBACK_DOMAIN}/playback/*`` URL and also host a copy of the *presentation player* single page application (SPA). This is a bit tricky to get up and running, but no worries, the docker-compose example already handles most if it and BBBLB helps where it can. If you want to understand how everything works, or configure it manually, read on.
+To allow clients to watch recordings, you need to serve the *media files* from the ``https://{PLAYBACK_DOMAIN}/playback/*`` URL and also host a copy of the *presentation player* single page application (SPA). BBBLB will serve media files by default but it is usually a good idea to let your webserver serve those files directly from disk. This is a bit tricky to get up and running, but no worries, the docker-compose example already handles most if. If you want to understand how everything works, or configure it manually, read on.
 
 Media Files
 -----------
@@ -140,7 +140,7 @@ The same for caddy::
 Presentation Player
 -------------------
 
-The *presentation* recording format is special. It needs a player that is not part of the recording and must be served separately from the ``https://{PLAYBACK_DOMAIN}/playback/presentation/2.3/`` URL. This player also assumes the recording data files are found under ``/presentation/{record_id}/*`` instead of the standard ``/playback/presentation/{record_id}/*`` path for whatever reason, and it is an SPA (single page application) that needs special configuration in the webserver.
+The *presentation* recording format is special. It needs a player that is not part of the recording and must be served separately from the ``https://{PLAYBACK_DOMAIN}/playback/presentation/2.3/`` URL. This player also assumes the recording data files are found under ``/presentation/{record_id}/*`` instead of the standard ``/playback/presentation/{record_id}/*`` path for whatever reason. It is also a SPA (single page application) that needs special configuration in the webserver.
 
 There are multiple ways to tackle this:
 
@@ -162,7 +162,7 @@ The player that comes with BBB expects media files in ``/presentation/{record_id
 
 .. rubric:: Option 2: Build and serve your own
 
-You can of course also build and serve your own copy of `bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__. The docker-compose example does exactly that. This has the added benefit that you can set ``REACT_APP_MEDIA_ROOT_URL=/playback/presentation/`` during build and skip the `/presentation/` redirect explained earlier.
+You can also build and serve your own copy of `bbb-playback <https://github.com/bigbluebutton/bbb-playback>`__. The docker-compose example does exactly that. This has the added benefit that you can set ``REACT_APP_MEDIA_ROOT_URL=/playback/presentation/`` during build and skip the `/presentation/` redirect explained earlier.
 
 If you want BBBLB to serve the player files, put them in ``{PATH_DATA}/htdocs/playback/presentation/2.3/``. But if you have a front-end webserver, it's usually best to serve those files directly from disk. 
 
@@ -176,7 +176,7 @@ A *published* recording is accessable by anyone who knows the link, and those li
 
 First, a disclaimer: *Protected recordings* only make link-sharing harder, they do not prevent users from downloading those files and share them offline, or  upload them to other services. There is no real protection, skilled users will always be able to share recordings one way or the other. Keep that in mind.
 
-Now that we got this out of the way, let's talk about how *Protected recordings* work and what they actually do.
+Now that we got this out of the way, let's talk about how *Protected recordings* actually work and what they can do for us.
 
 Recordings are unprotected by default. When `PROTECTED_RECORDINGS` is enabled, then BBBLB will add the non-standard `<protected>true|false</protected>` XML tag to all recordings returned by the `getRecordings` API. Supporting front-end applications can now call `updateRecordings` with `protect=true` or `protect=false` to enable or disable protection for specific recordings.
 
