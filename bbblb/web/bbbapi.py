@@ -4,7 +4,6 @@
 import asyncio
 from datetime import timedelta
 import functools
-import re
 import typing
 import uuid
 import lxml.etree
@@ -34,9 +33,6 @@ from bbblb.utils import hmac_sign
 
 LOG = logging.getLogger(__name__)
 R = typing.TypeVar("R")
-
-RECORDING_READY_PATTERN = re.compile("^meta_(.+)-recording-ready-url$")
-CALLBACK_META_PATTERN = re.compile("^meta_(.+)-callback-url$")
 
 api_routes = []
 
@@ -244,19 +240,18 @@ async def _intercept_callbacks(
     # can fire them later, after the recordings were imported and are actually
     # available.
     for meta in list(params):
-        if not RECORDING_READY_PATTERN.match(meta):
-            continue
-        orig_url = params.pop(meta)
-        if is_new:
-            callbacks.append(
-                model.Callback(
-                    uuid=meeting.uuid,
-                    type=model.CALLBACK_TYPE_REC,
-                    tenant=meeting.tenant,
-                    server=meeting.server,
-                    forward=orig_url,
+        if meta.startswith("meta_") and meta.endswith("-recording-ready-url"):
+            orig_url = params.pop(meta)
+            if is_new:
+                callbacks.append(
+                    model.Callback(
+                        uuid=meeting.uuid,
+                        type=model.CALLBACK_TYPE_REC,
+                        tenant=meeting.tenant,
+                        server=meeting.server,
+                        forward=orig_url,
+                    )
                 )
-            )
 
     # For all callbacks that follow the "meta_[name]-callback-url" pattern
     # we assume that they are JWT encoded and must be intercepted because
@@ -269,11 +264,13 @@ async def _intercept_callbacks(
         always_intercept.add("meta_analytics-callback-url")
 
     for param in set(params) | always_intercept:
-        match = CALLBACK_META_PATTERN.match(param)
-        if not match:
+        if not param.startswith("meta_"):
             continue
+        if not param.startswith("-callback-url"):
+            continue
+        typename = param[5:-13]
         orig_url = params.pop(param, None)
-        typename = match.group(1)
+
         if is_new:
             callbacks.append(
                 model.Callback(
