@@ -60,13 +60,11 @@ def is_unprotected_asset(format_name: str, resource: str):
 
 
 def sign_prt_cookie(record_id: str, expire: datetime.datetime, conf: BBBLBConfig):
-    return utils.hmac_sign(
-        f"{int(expire.timestamp())}:{record_id}", "prc" + conf.SECRET
-    )
+    return utils.hmac_sign(f"{int(expire.timestamp())}:{record_id}", conf.SECRET, "prc")
 
 
 def verify_prt_cookie(value: str, record_id: str, conf: BBBLBConfig):
-    payload = utils.hmac_verify(value, "prc" + conf.SECRET)
+    payload = utils.hmac_verify(value, conf.SECRET, "prc")
     if not payload or ":" not in payload:
         return False
     expire, _, rid = payload.partition(":")

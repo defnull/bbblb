@@ -68,16 +68,26 @@ def checked_cast(type_: type[T], value: typing.Any) -> T:
     raise TypeError(f"Expected {type_} but got {type(value)}")
 
 
-def hmac_sign(payload: str, secret: str) -> str:
-    sig = hmac.digest(secret.encode("UTF8"), payload.encode("UTF8"), hashlib.sha256)
+def hmac_sign(payload: str, secret: str, scope: str = "") -> str:
+    """Sign payload with secret+scope, return a "signature:payload" string.
+
+    The scope string acts as a salt for the secret so you can use the
+    same secret for different contexts while preventing reuse of a known
+    payload+signature pair in a different context.
+    """
+    sig = hmac.digest(
+        (scope+secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
+    )
     return f"{sig.hex()}:{payload}"
 
 
-def hmac_verify(untrtusted: str, secret: str) -> str | None:
+def hmac_verify(untrtusted: str, secret: str, scope: str = "") -> str | None:
+    """Verify a "signature:payload" string against a secret+scope."""
+
     sig, sep, payload = untrtusted.partition(":")
     if sig and sep:
         check = hmac.digest(
-            secret.encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
+            (scope+secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
         )
         try:
             if hmac.compare_digest(check, bytes.fromhex(sig)):

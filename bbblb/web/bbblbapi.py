@@ -3,8 +3,6 @@
 
 import asyncio
 import functools
-import hashlib
-import hmac
 import json
 from urllib.parse import parse_qs
 import logging
@@ -23,6 +21,7 @@ from starlette.responses import RedirectResponse, Response, JSONResponse
 from bbblb.web import ApiRequestContext
 from bbblb.services.recording import RecordingManager
 from bbblb.web import playback
+from bbblb.utils import hmac_verify
 
 LOG = logging.getLogger(__name__)
 
@@ -202,21 +201,13 @@ class AuthContext:
 ##
 
 
-@api("v1/callback/{uuid}/end/{sig}", name="bbblb:callback_end")
+@api("v1/callback/end/{uuid_signed}", name="bbblb:callback_end")
 async def handle_callback_end(ctx: BBBLBApiRequest):
     """Handle the meetingEndedURL callback"""
 
-    try:
-        meeting_uuid = ctx.request.path_params["uuid"]
-        callback_sig = ctx.request.path_params["sig"]
-    except (KeyError, ValueError):
-        LOG.warning("Callback called with missing or invalid parameters")
-        return Response("Invalid callback URL", 400)
-
-    # Verify callback signature
-    sig = f"bbblb:callback:end:{meeting_uuid}".encode("ASCII")
-    sig = hmac.digest(ctx.config.SECRET.encode("UTF8"), sig, hashlib.sha256)
-    if not hmac.compare_digest(sig, bytes.fromhex(callback_sig)):
+    uuid_signed = ctx.request.path_params["uuid_signed"]
+    meeting_uuid = hmac_verify(uuid_signed, ctx.config.SECRET, "end")
+    if not meeting_uuid:
         LOG.warning("Callback signature mismatch")
         return Response("Access denied, signature check failed", 401)
 
@@ -244,12 +235,8 @@ async def handle_callback_end(ctx: BBBLBApiRequest):
 
 @api("v1/callback/{uuid}/{type}", name="bbblb:callback_proxy")
 async def handle_callback_proxy(ctx: BBBLBApiRequest):
-    try:
-        meeting_uuid = ctx.request.path_params["uuid"]
-        callback_type = ctx.request.path_params["type"]
-    except (KeyError, ValueError):
-        LOG.warning("Callback called with missing or invalid parameters")
-        raise ApiError(400, "BadRequest", "Invalid callback URL")
+    meeting_uuid = ctx.request.path_params["uuid"]
+    callback_type = ctx.request.path_params["type"]
 
     # Fetch matching callbacks instance
     stmt = model.Callback.select(uuid=meeting_uuid, type=callback_type)

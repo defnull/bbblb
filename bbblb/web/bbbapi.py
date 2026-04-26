@@ -4,8 +4,6 @@
 import asyncio
 from datetime import timedelta
 import functools
-import hashlib
-import hmac
 import re
 import typing
 import uuid
@@ -32,6 +30,7 @@ from bbblb.lib.bbb import (
 from bbblb import model
 from bbblb.services.tenants import TenantCache
 from bbblb.web import ApiRequestContext
+from bbblb.utils import hmac_sign
 
 LOG = logging.getLogger(__name__)
 R = typing.TypeVar("R")
@@ -236,9 +235,8 @@ async def _intercept_callbacks(
             )
         )
     # No signed payload, so we sign the URL instead.
-    sig = f"bbblb:callback:end:{meeting.uuid}".encode("ASCII")
-    sig = hmac.digest(cxt.config.SECRET.encode("UTF8"), sig, hashlib.sha256).hex()
-    url = cxt.request.url_for("bbblb:callback_end", uuid=str(meeting.uuid), sig=sig)
+    uuid_signed = hmac_sign(str(meeting.uuid), cxt.config.SECRET, "end")
+    url = cxt.request.url_for("bbblb:callback_end", uuid_signed=uuid_signed)
     url = url.replace(scheme="https", hostname=cxt.config.DOMAIN)
     params["meetingEndedURL"] = str(url)
 
