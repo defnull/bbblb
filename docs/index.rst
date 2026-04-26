@@ -1,12 +1,8 @@
 BBBLB Documentation
 ==================================
 
-
-BBBLB is yet another load balancer for `BigBlueButton <https://bigbluebutton.org/>`__. It is designed to
-provide a secure, scalable, and robust way to scale BBB beyond
-single-server installations, enabling organizations to distribute
-meetings across many BBB servers or offer managed BBB hosting services
-on shared hardware.
+BBBLB (BigBlueButton Load Balancer) is a modern load balancer for `BigBlueButton <https://bigbluebutton.org/>`__.
+It is designed to provide a secure, scalable, and robust way to scale BBB beyond single-server installations, enabling organizations to distribute meetings across many BBB servers or offer managed BBB hosting services on shared hardware.
 
 .. .. image:: https://github.com/defnull/bbblb/actions/workflows/docker.yaml/badge.svg
 ..     :target: https://github.com/defnull/bbblb/actions/workflows/docker.yaml
