@@ -3,7 +3,7 @@
 
 import logging
 
-__version__ = "0.0.17"
+__version__ = "0.0.18"
 VERSION = __version__.split(".", 2)
 VERSION[-1], _, BUILD = VERSION[-1].partition("-")
 
