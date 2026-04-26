@@ -210,10 +210,36 @@ class BBBLBConfig(BaseConfig):
     then BBBLB will import new recordings as 'unpublished' regardless of
     their original state. """
 
+    PROTECTED_RECORDINGS: bool = False
+    """ If enabled, BBBLB will support *protected recordings* similar to
+    the experimental and unofficial API extention implemented by
+    Scalelite and Greenlight.
+
+    For protected recordings, the getRecordings API will replace
+    recording links with a one-time ticket that allow a single user to
+    watch the protected recording for a limited amount of time.
+
+    Warning: This feature needs additional configuration if recordings
+    are not served through BBBLB, and does not prevent downloads. Read
+    the documentation to understand requirements and limitations of this
+    feature."""
+
+    PROTECTED_RECORDINGS_TIMEOUT: int = 360
+    """ Number of minutes a protected recording can be watched wth a
+    ticket after it has been issued. """
+
     PLAYBACK_DOMAIN: str = "{DOMAIN}"
     """ Domain where recordings are hostet. The wildcards {DOMAIN} or {REALM}
     can be used to refer to the global DOMAIN config, or the realm of the
     current tenant. """
+
+    PLAYBACK_PLAYER_ROOT: Path | None = None
+    """ Absolute path to a copy of the bbb-playback presentation player.
+    You can leave this blank if you serve the bbb-playback assets via
+    a front-end webserver or CDN.
+
+    Defaults to `{PATH_DATA}/htdocs/playback/presentation/2.3/`
+    """
 
     POLL_INTERVAL: int = 30
     """ Poll interval in seconds for the background server health and meeting

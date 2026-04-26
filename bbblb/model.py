@@ -4,6 +4,7 @@
 import enum
 import logging
 import typing
+import uuid
 from uuid import UUID
 
 import datetime
@@ -536,6 +537,7 @@ class Recording(Base):
     started: Mapped[datetime.datetime] = mapped_column(TZDateTime(), nullable=False)
     ended: Mapped[datetime.datetime] = mapped_column(TZDateTime(), nullable=False)
     participants: Mapped[int] = mapped_column(nullable=False, default=0)
+    protected: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     @validates("meta")
     def validate_meta(self, key, meta):
@@ -567,6 +569,57 @@ class PlaybackFormat(Base):
     # Parts of the XML can contain arbitrary extentions, so we keep it
     # around for getRecordings requests.
     xml: Mapped[str] = mapped_column(nullable=False)
+
+
+class ViewTicket(Base):
+    __tablename__ = "view_tickets"
+
+    uuid: Mapped[UUID] = mapped_column(primary_key=True)
+    recording_fk: Mapped[int] = mapped_column(
+        ForeignKey("recordings.id", ondelete="CASCADE"), nullable=False
+    )
+    recording: Mapped[Recording] = relationship(lazy=False)
+    expire: Mapped[datetime.datetime] = mapped_column(TZDateTime(), nullable=False)
+    consumed: Mapped[bool] = mapped_column(nullable=False, default=False)
+
+    def is_expired(self):
+        return utcnow() > self.expire
+
+    @classmethod
+    def create(cls, recording: Recording, lifetime: datetime.timedelta) -> "ViewTicket":
+        return cls(
+            uuid=uuid.uuid4(),
+            recording=recording,
+            expire=utcnow() + lifetime,
+        )
+
+    @classmethod
+    def delete_expired(cls):
+        return cls.delete(cls.expire < utcnow())
+
+    async def consume(self, session: AsyncSession, commit=False) -> bool:
+        """Atomically mark a valid ticket as consumed.
+
+        Returns True if the ticket existed, was not expired and not already consumed.
+        """
+        result = await session.execute(
+            update(ViewTicket)
+            .where(ViewTicket.uuid == self.uuid)
+            .where(ViewTicket.expire > utcnow())
+            .where(ViewTicket.consumed.is_(False))
+            .values(consumed=True)
+            .returning(ViewTicket.uuid)
+        )
+        row = result.fetchone()
+        if row is None:
+            return False
+        if commit:
+            await session.commit()
+        self.consumed = True
+        return True
+
+    def __str__(self):
+        return f"ViewTicket(rec={self.recording.record_id} ticket={self.uuid})"
 
 
 # class Task(Base):

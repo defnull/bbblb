@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import asyncio
+from datetime import timedelta
 import functools
 import hashlib
 import hmac
@@ -668,7 +669,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             XML.recordID(rec.record_id),
             XML.meetingID(rec.external_id),
             XML.internalMeetingID(rec.record_id),  # TODO: Really always the case?
-            XML.name(rec.meta["meetingName"]),
+            XML.name(rec.meta.get("meetingName", "")),
             XML.isBreakout(rec.meta.get("isBreakout", "false")),
             XML.published(
                 "true" if rec.state == model.RecordingState.PUBLISHED else "false"
@@ -687,12 +688,31 @@ async def handle_get_recordings(ctx: BBBApiRequest):
             rec_xml, utils.add_scope(rec.external_id, tenant.name), rec.external_id
         )
 
+        ticket = None
+        if ctx.config.PROTECTED_RECORDINGS:
+            rec_xml.append(XML.protected("true" if rec.protected else "false"))
+            if rec.protected:
+                ticket = model.ViewTicket.create(
+                    rec, timedelta(minutes=ctx.config.PROTECTED_RECORDINGS_TIMEOUT)
+                )
+                ctx.session.add(ticket)
+
         playback_xml = SubElement(rec_xml, "playback")
         for playback in rec.formats:
-            format_xml = playback_to_xml(ctx.config, playback)
+            if ticket and rec.protected:
+                format_xml = playback_to_xml(
+                    ctx.config,
+                    playback,
+                    ticket_prefix=f"/bbblb/api/v1/recording/ticket/{ticket.uuid}",
+                )
+            else:
+                format_xml = playback_to_xml(ctx.config, playback)
             playback_xml.append(format_xml)
 
         all_recordings.append(rec_xml)
+
+    if ctx.config.PROTECTED_RECORDINGS:
+        await ctx.session.commit()
 
     return result_xml
 
@@ -768,6 +788,10 @@ async def handle_update_recordings(ctx: BBBApiRequest):
         if key.startswith("meta_") and not key.startswith("meta_bbblb-")
     }
 
+    protect = None
+    if ctx.config.PROTECTED_RECORDINGS and "protect" in params:
+        protect = params["protect"].lower() == "true"
+
     stmt = model.Recording.select(
         model.Recording.tenant == tenant, model.Recording.record_id.in_(record_ids)
     )
@@ -781,6 +805,9 @@ async def handle_update_recordings(ctx: BBBApiRequest):
                 rec.meta[key] = value
             else:
                 rec.meta.pop(key, None)
+        if protect is not None and rec.protected != protect:
+            rec.protected = protect
+            updated = True
 
     await ctx.session.commit()
 

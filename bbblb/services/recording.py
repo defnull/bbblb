@@ -34,18 +34,16 @@ LOG = logging.getLogger(__name__)
 P = typing.ParamSpec("P")
 R = typing.TypeVar("R")
 
-URLPATTERNS = {
-    "presentation",
-    "{BASEURL}/playback/presentation/player/{RECORD_ID}/*",
-    "{BASEURL}/playback/{FORMAT}/{RECORD_ID}/",
-}
-
 
 class RecordingImportError(RuntimeError):
     pass
 
 
-def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> Element:
+def playback_to_xml(
+    config: BBBLBConfig,
+    playback: model.PlaybackFormat,
+    ticket_prefix: str | None = None,
+) -> Element:
     orig = lxml.etree.fromstring(playback.xml)
     playback_domain = config.PLAYBACK_DOMAIN.format(
         DOMAIN=config.DOMAIN, REALM=playback.recording.tenant.realm
@@ -80,6 +78,8 @@ def playback_to_xml(config: BBBLBConfig, playback: model.PlaybackFormat) -> Elem
         url = url._replace(scheme="https", netloc=playback_domain)
         if url.path.startswith(f"/{playback.format}"):
             url = url._replace(path=f"/playback{url.path}")
+        if ticket_prefix and url.path.startswith("/playback/"):
+            url = url._replace(path=ticket_prefix + url.path)
         node.text = url.geturl()
 
     return result
@@ -259,7 +259,12 @@ class RecordingManager(BackgroundService):
 
     async def cleanup(self):
         # TODO: Cleanup *.failed and *.canceled work directories.
-        pass
+
+        # Cleanup expored ViewTicket entries for protected recordings.
+        async with self.db.connect() as conn:
+            result = await conn.execute(model.ViewTicket.delete_expired())
+            if result.rowcount:
+                LOG.debug(f"Removed {result.rowcount} expired ViewTickets")
 
     async def close(self):
         for task in list(self.tasks.values()):

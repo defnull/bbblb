@@ -8,6 +8,7 @@ import hmac
 import json
 from urllib.parse import parse_qs
 import logging
+import uuid
 import jwt
 
 from bbblb.services.analytics import AnalyticsHandler
@@ -17,10 +18,11 @@ from bbblb import model, utils
 
 from starlette.requests import Request
 from starlette.routing import Route
-from starlette.responses import Response, JSONResponse
+from starlette.responses import RedirectResponse, Response, JSONResponse
 
 from bbblb.web import ApiRequestContext
 from bbblb.services.recording import RecordingManager
+from bbblb.web import playback
 
 LOG = logging.getLogger(__name__)
 
@@ -375,6 +377,106 @@ async def handle_recording_upload(ctx: BBBLBApiRequest):
         return JSONResponse(
             {"error": "Import failed", "message": str(exc)}, status_code=500
         )
+
+
+##
+### Protected Recordings
+##
+
+
+@api(
+    "v1/recording/ticket/{ticket_uuid}/{original_path:path}",
+    methods=["GET"],
+    name="bbblb:ticket",
+)
+async def handle_protected_recording_link(ctx: BBBLBApiRequest):
+    """A recording link that can only be used by a single user.
+
+    When visited for the first time (ticket not consumed) the ticket is
+    consumed, the user gets a signed cookie and is then redirected. If
+    visited a second time (ticket already consumed) the user either
+    needs a valid cookie or is rejected.
+    """
+    if not ctx.config.PROTECTED_RECORDINGS:
+        return Response("Invalid recording link", 404)
+
+    ticket_uuid = ctx.request.path_params["ticket_uuid"]
+    try:
+        ticket_id = uuid.UUID(ticket_uuid)
+    except ValueError:
+        return Response("Invalid recording link", 404)
+
+    ticket = await ctx.session.get(model.ViewTicket, ticket_id)
+    if not ticket or ticket.is_expired():
+        return Response("This recording link is expired", 403)
+
+    original_path = ctx.request.path_params["original_path"]
+    target = ctx.request.url.replace(scheme="https", path=original_path)
+
+    if not ticket.recording.protected:
+        return RedirectResponse(target)
+
+    record_id = ticket.recording.record_id
+    cookie_key = playback.PRT_COOKIE_PREFIX + record_id
+    cookie = ctx.request.cookies.get(cookie_key)
+
+    if cookie and playback.verify_prt_cookie(cookie, record_id, ctx.config):
+        return RedirectResponse(target)
+
+    if not ticket.consumed and await ticket.consume(ctx.session, commit=True):
+        rs = RedirectResponse(target)
+        rs.set_cookie(
+            cookie_key,
+            playback.sign_prt_cookie(record_id, ticket.expire, ctx.config),
+            path="/",
+            max_age=ctx.config.PROTECTED_RECORDINGS_TIMEOUT * 60,
+        )
+        return rs
+
+    return Response("This recording link is expired", 403)
+
+
+@api("v1/recording/auth/{original_path:path}", methods=["GET"])
+async def handle_protected_recording_auth(ctx: BBBLBApiRequest):
+    """Auth API used by front-end webservers or CDNs to validate user
+    requests for recording data."""
+    if not ctx.config.PROTECTED_RECORDINGS:
+        return Response(status_code=204)
+
+    # Get record_id ouf of the requested path
+    path = ctx.request.path_params["original_path"].lstrip("/")
+    if path.startswith("playback/"):
+        path = path[9:]
+    if match := playback.split_media_path(path):
+        format_name, record_id, resource = match
+    else:
+        return playback.PlaybackMediaApp.response_bad_path(path)
+
+    # Allow access to unprotected assets (js, css, fonts, ...)
+    if playback.is_unprotected_asset(format_name, resource):
+        return Response(status_code=204)
+
+    # Fetch cookie and load recording
+    cookie_key = f"bbblb_prt_{record_id}"
+    cookie = ctx.request.cookies.get(cookie_key, "")
+    recording = await ctx.session.scalar(model.Recording.select(record_id=record_id))
+
+    # Reject requests for missing or unpublished recordings
+    if not recording or recording.state is not model.RecordingState.PUBLISHED:
+        return playback.PlaybackMediaApp.response_missing(record_id)
+
+    # Require a valid cookie for protected recordings
+    if not recording.protected or playback.verify_prt_cookie(
+        cookie, record_id, ctx.config
+    ):
+        return Response(status_code=204)
+
+    return playback.PlaybackMediaApp.response_reject()
+
+
+##
+### REST API
+##
 
 
 @api("v1/tenant", methods=["GET"])

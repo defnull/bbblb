@@ -55,10 +55,12 @@ Features
    and avoiding the infamous ‘trampling herd’[#th]_ problem.
 -  **Recording Management**: Recordings are transferred from the BBB
    servers to central storage via a simple [#spp]_ and robust ``post_publish``
-   script. 
+   script.
 -  **Callback Relay**: Callbacks registered for a meeting are properly
    relayed between the back-end BBB server and the front-end application
    with a robust retry-mechanism.
+-  **Protected recordings**: Experimental support for single-use
+   recording links to prevent [#pr]_ link sharing.
 -  **Admin API and CLI**: BBBLB offers both an API and a command line
    interface to fetch health information, manage tenants, servers or
    recordings and perform maintenance tasks.
@@ -114,5 +116,10 @@ Footnotes
    meetings.
 .. [#spp] Recordings are transferred directly via HTTPS. No configuration,
    credentials, ``ssh`` keys or shared network file system necessary.
-
+.. [#pr] Protected recordings are an unofficial extention to the BBB API
+   that requires support from front-end applications and additional
+   proxy/CDN configuration to work properly. It prevents users from
+   sharing a recording link after use, but does not prevent downloading
+   recordings and comes with some drawbacks. Use with care and read the
+   documentation carefully!
 

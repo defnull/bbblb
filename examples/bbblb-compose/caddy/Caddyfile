@@ -24,20 +24,22 @@ example.com *.example.com {
   ## Serve recording files from a volume mounted into the container
   handle_path /playback/* {
     root * /usr/share/bbblb/recordings/public
+    ## Uncomment if you enabled PROTECTED_RECORDINGS
+    # forward_auth bbblb:8000/bbblb/api/v1/recording/auth/{uri}
     file_server
   }
 
   ## Serve 'presentation' files from a different path because the player
   ## expects them to be there by default. Not needed for the 'fixed' bundled
   ## player.
-  handle_path /presentation/* {
-    root * /usr/share/bbblb/recordings/public/presentation
-    file_server
-  }
+  # handle_path /presentation/* {
+  #   root * /usr/share/bbblb/recordings/public/presentation
+  #   file_server
+  # }
 
   ## For BBB Cluster Proxy setups you need to forward certain requests to the
-  ## back-end servers based on a path prefix. You need one of these for each
-  ## back-end server. Tell me if you know a better way!
+  ## back-end servers based on a path prefix. You need to repeat those rules for
+  # each back-end server. Tell me if you know a better way!
   #redir /bbb-01/html5client /bbb-01/html5client/?{query}
   #handle /bbb-01/html5client/* {
   #    reverse_proxy https://bbb-01.example.com
