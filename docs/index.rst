@@ -59,8 +59,8 @@ Features
 -  **Callback Relay**: Callbacks registered for a meeting are properly
    relayed between the back-end BBB server and the front-end application
    with a robust retry-mechanism.
--  **Protected recordings**: Experimental support for single-use
-   recording links to prevent [#pr]_ link sharing.
+-  **Protected Recordings**: Experimental support for single-use
+   recording links to prevent recording link sharing [#pr]_.
 -  **Admin API and CLI**: BBBLB offers both an API and a command line
    interface to fetch health information, manage tenants, servers or
    recordings and perform maintenance tasks.

@@ -35,7 +35,10 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("uuid", name=op.f("pk_view_tickets")),
     )
-    op.add_column("recordings", sa.Column("protected", sa.Boolean(), server_default=sa.sql.expression.false()))
+    op.add_column(
+        "recordings",
+        sa.Column("protected", sa.Boolean(), server_default=sa.sql.expression.false()),
+    )
     with op.batch_alter_table("recordings") as batch_op:
         batch_op.alter_column("protected", server_default=None)
 

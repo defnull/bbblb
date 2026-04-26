@@ -16,6 +16,7 @@ Documentation can be found at https://bbblb.readthedocs.io/  or in the `./docs/`
 * **Advanced Loadbalancing:** Meetings are distributed based on current and predicted utilization, taking common usage patterns into account.
 * **Recording Management:** Recordings are transferred to central storage with a robust post_publish.rb script installed on each BBB backend server. This script just needs to sit in the correct directory, it does not require any configuration, ssh access or shared network file system to work.
 * **Callback Relay:** Callbacks registered for a meeting are properly relayed between the back-end BBB server and the front-end application with a robust retry-mechanism.
+* **Protected Recordings**: Experimental support for single-use recording links to prevent recording link sharing.
 * **Management CLI and API:** BBBLB comes with a rich command line tool to fetch health information, manage tenants, servers or recordings, or automate maintenance tasks.
 * **Scalability:** BBBLB is a modern async python application with low overhead and can easily scale to large clusters with thousands of active meetings. 
 
@@ -50,7 +51,8 @@ graph TD
 
 Recordings are stored and managed centrally on the BBBLB server, separated
 by tenant, which allows you to remove or replace BigBlueButton servers
-without losing access to past recordings.
+without losing access to past recordings. Callbacks or webhooks are relayed
+though BBBLB back to your front-end application.
 
 Rolling cluster upgrades without downtime are also fully supported. With 
 `bbblb server disable` you can disable some of your back-end servers

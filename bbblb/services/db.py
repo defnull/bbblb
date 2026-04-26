@@ -48,7 +48,9 @@ class DBContext(ManagedService, HealthReportingMixin):
 
             current, target = await check_migration_state(self._db_url)
             if current != target and self._migrate:
-                LOG.info(f"Migrating database from schema revision {current!r} to {target!r} ...")
+                LOG.info(
+                    f"Migrating database from schema revision {current!r} to {target!r} ..."
+                )
                 await migrate_db(self._db_url)
             elif current != target:
                 LOG.error(f"Expected schema revision {target!r} but found {current!r}.")
