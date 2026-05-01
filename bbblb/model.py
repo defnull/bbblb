@@ -1,6 +1,7 @@
 # Copyright (C) 2025, 2026  Marcel Hellkamp
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
+import dataclasses
 import enum
 import logging
 import typing
@@ -170,6 +171,25 @@ class TZDateTime(TypeDecorator):
         if value is not None and value.tzinfo is None:
             value = value.replace(tzinfo=datetime.timezone.utc)
         return value
+
+
+class DataclassJsonType(TypeDecorator):
+    impl = AUTOJSON
+    cache_ok = True
+
+    def __init__(self, base_cls):
+        super().__init__()
+        self.base_cls = base_cls
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return dataclasses.asdict(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return self.base_cls(**value)
 
 
 class ORMMixin:
@@ -342,6 +362,15 @@ class ServerHealth(enum.Enum):
     OFFLINE = 2
 
 
+@dataclasses.dataclass
+class ServerStats:
+    meetings = 0
+    users = 0
+    video = 0
+    voice = 0
+    largest = 0
+
+
 class Server(Base):
     __tablename__ = "servers"
 
@@ -360,8 +389,8 @@ class Server(Base):
     recover: Mapped[int] = mapped_column(nullable=False, default=0)
 
     load: Mapped[float] = mapped_column(nullable=False, default=0.0)
-    stats: Mapped[dict[str, float]] = mapped_column(
-        AUTOJSON, nullable=False, default={}
+    stats: Mapped[ServerStats] = mapped_column(
+        DataclassJsonType(ServerStats), nullable=False, default=ServerStats()
     )
 
     meetings: Mapped[list["Meeting"]] = relationship(
@@ -384,47 +413,41 @@ class Server(Base):
         )
 
     def mark_error(self, fail_threshold: int):
-        """For OFFLINE servers, do nothing. For UNSTABLE or AVAILABLE
-        servers, increase the error counter and set the server to
-        UNSTABLE until the fail_threshold is reached, then set the
-        server to OFFLINE.
-        """
-        if self.health == ServerHealth.OFFLINE:
-            pass  # Already dead
-        elif self.errors < fail_threshold:
-            # Server is failing
-            self.recover = 0  # Reset recovery counter
-            self.errors += 1
+        """Increase the error counter and reset the recovery counter.
+
+        Set the server to UNSTABLE if it is still below the fail_threshold,
+        or OFFLINE if it reached the threshold."""
+
+        self.recover = 0
+        self.errors = min(self.errors + 1, 9999)
+
+        if self.errors < fail_threshold:
             self.health = ServerHealth.UNSTABLE
-            LOG.warning(
-                f"Server {self.domain} is UNSTABLE and failing ({self.errors}/{fail_threshold})"
-            )
         else:
-            # Server failed too often, give up
             self.health = ServerHealth.OFFLINE
-            LOG.warning(f"Server {self.domain} is OFFLINE")
 
     def mark_success(self, recover_threshold: int):
-        """For AVAILABLE servers, do nothing. For OFFLINE or UNSTABLE
-        servers, increase the recovery counter and set the server to
-        UNSTABLE until the recover_threshold is reached, then set the
-        server to AVAILABLE.
+        """Increase the recovery counter.
+
+        Set the server to UNSTABLE if there are errors but the server
+        did not reach recover_threshold yet.
+
+        Set the server to AVAILABLE and clear the error counter if it
+        reached recover_threshold or if there were no errors to begin with.
         """
-        if self.health == ServerHealth.AVAILABLE:
-            pass  # Already healthy
-        elif self.recover < recover_threshold:
-            # Server is still recovering
-            self.recover += 1
+
+        self.recover = min(self.recover + 1, 9999)
+
+        if self.errors and self.recover < recover_threshold:
             self.health = ServerHealth.UNSTABLE
-            LOG.warning(
-                f"Server {self.domain} is UNSTABLE and recovering ({self.recover}/{recover_threshold})"
-            )
         else:
-            # Server fully recovered
             self.errors = 0
-            self.recover = 0
             self.health = ServerHealth.AVAILABLE
-            LOG.info(f"Server {self.domain} is ONLINE")
+
+    def force_available(self):
+        """Set the server to AVAILABLE and clear the error counter."""
+        self.errors = 0
+        self.health = ServerHealth.AVAILABLE
 
     @property
     def api_base(self):

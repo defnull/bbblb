@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import asyncio
-from dataclasses import dataclass
 import datetime
 import random
 import time
@@ -19,16 +18,6 @@ import logging
 from bbblb.settings import BBBLBConfig
 
 LOG = logging.getLogger(__name__)
-
-
-@dataclass
-class ServerStats:
-    meetings = 0
-    users = 0
-    video = 0
-    voice = 0
-    largest = 0
-    load = 0.0
 
 
 class MeetingPoller(BackgroundService):
@@ -64,7 +53,6 @@ class MeetingPoller(BackgroundService):
                     await self.lock.try_run_locked(self.poll_loop)
 
             except asyncio.CancelledError:
-                LOG.info("Poller shutting down...")
                 raise
             except Exception:
                 LOG.exception("Unhandled polling error")
@@ -81,7 +69,7 @@ class MeetingPoller(BackgroundService):
             await self._trim_old_meeting_stats()
             async with self.db.session() as session:
                 result = await session.execute(model.Server.select())
-                servers = result.scalars()
+                servers = result.scalars().all()
 
             self._poll_start = model.utcnow()
             futures = [
@@ -120,9 +108,9 @@ class MeetingPoller(BackgroundService):
                 return
             LOG.debug(f"[{server.domain}] Disabled server still has meetings.")
 
-        LOG.info(f"[{server.domain}] Polling... (state={server.health.name})")
         running_ids = set()
-        server_stats = ServerStats()
+        server_stats = model.ServerStats()
+        server_load = 0.0
         meeting_stats = []
         success = True
         try:
@@ -153,7 +141,7 @@ class MeetingPoller(BackgroundService):
                 server_stats.voice += voice
                 server_stats.video += video
                 server_stats.largest = max(server_stats.largest, users)
-                server_stats.load += self.get_meeting_load(
+                server_load += self.get_meeting_load(
                     users, voice, video, age, size_hint
                 )
 
@@ -182,7 +170,7 @@ class MeetingPoller(BackgroundService):
                     )
 
         except BBBError as err:
-            LOG.warning(f"[{server.domain}] Server returned an error: {err}")
+            LOG.warning(f"[{server.domain}] Health check failed: {err}")
             success = False
 
         async with self.db.session() as session:
@@ -217,27 +205,42 @@ class MeetingPoller(BackgroundService):
             old_health = server.health
 
             if success:
-                server.load = server_stats.load
-                server.stats = {
-                    "meetings": server_stats.meetings,
-                    "users": server_stats.users,
-                    "voice": server_stats.voice,
-                    "video": server_stats.video,
-                    "largest": server_stats.largest,
-                }
+                server.load = server_load
+                server.stats = server_stats
                 server.mark_success(self.minsuccess)
             else:
                 server.mark_error(self.maxerror)
 
-            LOG.info(
-                f"[{server.domain}] {server.health.name} enabled={server.enabled} meetings={server_stats.meetings} users={server_stats.users} load={server_stats.load:.1f}"
-            )
+            # Log state changes as warnings, even positive ones.
+            if server.health is model.ServerHealth.AVAILABLE:
+                if old_health is not model.ServerHealth.AVAILABLE:
+                    LOG.warning(
+                        f"[{server.domain}] Server recovered and is now AVAILABLE."
+                    )
+            elif server.health is model.ServerHealth.UNSTABLE:
+                if success:
+                    LOG.warning(
+                        f"[{server.domain}] Server is UNSTABLE but recovering."
+                        f" Successfull polls: {server.recover}/{self.minsuccess}"
+                    )
+                else:
+                    LOG.warning(
+                        f"[{server.domain}] Server is UNSTABLE and still failing."
+                        f" Failed polls: {server.errors}/{self.maxerror}"
+                    )
+            elif server.health is model.ServerHealth.OFFLINE:
+                if old_health is not model.ServerHealth.OFFLINE:
+                    LOG.warning(
+                        f"[{server.domain}] Server failed too often and is now marked as OFFLINE."
+                    )
 
-            # Log all state changes (including recovery) as warnings
-            if old_health != server.health:
-                LOG.warning(
-                    f"[{server.domain}] health changed from {old_health.name} to {server.health.name}"
-                )
+            LOG.debug(
+                f"[{server.domain}] {server.health.name}"
+                f" enabled={server.enabled}"
+                f" meetings={server_stats.meetings}"
+                f" users={server_stats.users}"
+                f" load={server_load:.1f}"
+            )
 
             await session.commit()
 

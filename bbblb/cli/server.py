@@ -79,7 +79,7 @@ async def enable(obj: ServiceRegistry, domains: list[str], now: bool):
                 server.enabled = True
                 click.echo(f"Server {domain!r} enabled")
             if now:
-                server.mark_success(recover_threshold=0)
+                server.force_available()
         await session.commit()
 
 
@@ -241,11 +241,11 @@ async def stats(obj: ServiceRegistry, table_format):
                 server=server.domain,
                 enabled=server.enabled,
                 state=server.health.name.lower(),
-                meetings=server.stats.get("meetings", 0),
-                largest=server.stats.get("largest", 0),
-                users=server.stats.get("users", 0),
-                voice=server.stats.get("voice", 0),
-                video=server.stats.get("video", 0),
+                meetings=server.stats.meetings,
+                largest=server.stats.largest,
+                users=server.stats.users,
+                voice=server.stats.voice,
+                video=server.stats.video,
                 load=server.load,
             )
     tbl.print(format=table_format)
