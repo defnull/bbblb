@@ -76,7 +76,7 @@ def hmac_sign(payload: str, secret: str, scope: str = "") -> str:
     payload+signature pair in a different context.
     """
     sig = hmac.digest(
-        (scope+secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
+        (scope + secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
     )
     return f"{sig.hex()}:{payload}"
 
@@ -87,7 +87,7 @@ def hmac_verify(untrtusted: str, secret: str, scope: str = "") -> str | None:
     sig, sep, payload = untrtusted.partition(":")
     if sig and sep:
         check = hmac.digest(
-            (scope+secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
+            (scope + secret).encode("UTF8"), payload.encode("UTF8"), hashlib.sha256
         )
         try:
             if hmac.compare_digest(check, bytes.fromhex(sig)):
