@@ -21,11 +21,11 @@ class LockManager(ManagedService):
         self.db = db
 
     async def on_start(self):
-        LOG.debug(f"Log manager started with identity: {PROCESS_IDENTITY}")
+        LOG.info(f"Log manager started with identity: {PROCESS_IDENTITY}")
         await super().on_start()
 
     async def on_shutdown(self):
-        LOG.debug("Log manager shutdown. Releasing locks...")
+        LOG.info("Log manager shutdown. Releasing locks...")
         async with self.db.connect() as conn:
             await conn.execute(
                 model.delete(model.Lock).where(model.Lock.owner == PROCESS_IDENTITY)
@@ -85,6 +85,7 @@ class NamedLock:
             if result.rowcount > 0:
                 LOG.debug(f"Lock {self.name!r} updated by {PROCESS_IDENTITY}")
                 return True
+            LOG.warning(f"Failed to update lock {self.name!r} for {PROCESS_IDENTITY}")
             return False
 
     async def try_release(self):
