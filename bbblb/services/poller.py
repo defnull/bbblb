@@ -93,6 +93,8 @@ class MeetingPoller(BackgroundService):
             await asyncio.sleep(max(1.0, sleep))
 
     async def poll_one(self, server_id):
+
+        # Fetch current state (server, meetigns) from DB
         async with self.db.session() as session:
             server = (
                 await session.execute(model.Server.select(id=server_id))
@@ -103,15 +105,18 @@ class MeetingPoller(BackgroundService):
                 if meeting.internal_id
             }
 
+        # Poll disabled servers only if we think they still have meetings.
         if not server.enabled:
-            if not meetings:
-                return
-            LOG.debug(f"[{server.domain}] Disabled server still has meetings.")
+            if meetings or server.stats.meetings:
+                LOG.debug(f"[{server.domain}] Disabled server still has meetings.")
+            else:
+                return  # No need to poll
 
-        running_ids = set()
-        server_stats = model.ServerStats()
+        # Collect meetings and stats from the BBB backend server
+        running_ids: set[str] = set()
         server_load = 0.0
-        meeting_stats = []
+        server_stats = model.ServerStats()
+        meeting_stats: dict[int, model.MeetingStats] = {}
         success = True
         try:
             async with self.bbb.connect(server.api_base, server.secret) as client:
@@ -125,8 +130,6 @@ class MeetingPoller(BackgroundService):
 
                 meeting_id = mxml.findtext("internalMeetingID")
                 parent_id = mxml.findtext("breakout/parentMeetingID")
-                running_ids.add(meeting_id)
-
                 users = int(mxml.findtext("participantCount") or 0)
                 voice = int(mxml.findtext("voiceParticipantCount") or 0)
                 video = int(mxml.findtext("videoCount") or 0)
@@ -136,29 +139,33 @@ class MeetingPoller(BackgroundService):
                 except ValueError:
                     size_hint = 0
 
-                server_stats.meetings += 1
-                server_stats.users += users
-                server_stats.voice += voice
-                server_stats.video += video
-                server_stats.largest = max(server_stats.largest, users)
+                if not meeting_id:
+                    continue
+
+                # Count all meetings, even if we do not know them
+                running_ids.add(meeting_id)
+                server_stats.count_meeting(users, voice, video)
                 server_load += self.get_meeting_load(
                     users, voice, video, age, size_hint
                 )
 
-                if meeting_id not in meetings:
-                    if parent_id:
-                        # TODO: Breakout rooms may be created without our knowledge,
-                        # maybe learn those?
-                        continue
-                    LOG.warning(
-                        f"[{server.domain}] Meeting found on server that is not in DB: {meeting_id}"
-                    )
-                    continue  # Ignore unknown meetings
+                # Find the matching meeting
+                meeting = None
+                if meeting_id in meetings:
+                    meeting = meetings.get(meeting_id)
+                elif parent_id and parent_id in meeting_id:
+                    meeting = meetings.get(parent_id)
+                else:
+                    # We do not know this meeting. If was created very
+                    # recently (after the DB fetch) or not by us at all.
+                    # TODO: If this is our meeting, but we forgot about
+                    # it because the server went OFFLINE and came back,
+                    # either learn it, or end it on the back-end.
+                    continue
 
-                if self.config.POLL_STATS:
-                    meeting = meetings[meeting_id]
-                    meeting_stats.append(
-                        model.MeetingStats(
+                if self.config.POLL_STATS and meeting:
+                    if meeting.uuid not in meeting_stats:
+                        meeting_stats[meeting.id] = model.MeetingStats(
                             ts=self._poll_start,
                             uuid=meeting.uuid,
                             meeting_id=meeting.external_id,
@@ -167,80 +174,58 @@ class MeetingPoller(BackgroundService):
                             voice=voice,
                             video=video,
                         )
-                    )
+                    else:
+                        # Likely a breakout room. We count users only
+                        # once, but voice and video are all counted
+                        stats = meeting_stats[meeting.id]
+                        stats.users = max(users, stats.users)
+                        stats.voice += voice
+                        stats.video += video
 
         except BBBError as err:
             LOG.warning(f"[{server.domain}] Health check failed: {err}")
             success = False
 
         async with self.db.session() as session:
-            if meeting_stats:
-                session.add_all(meeting_stats)
-
-            # Forget meetings not found on server
-            forget_ids = [
-                meeting.id
-                for meeting in meetings.values()
-                if meeting.internal_id not in running_ids
-            ]
-            if forget_ids:
-                LOG.debug(
-                    f"[{server.domain}] Removing {len(forget_ids)} meetings that were not found on the server"
-                )
-                chunk_size = 100
-                for offset in range(0, len(forget_ids), chunk_size):
-                    await session.execute(
-                        model.delete(model.Meeting).where(
-                            model.Meeting.id.in_(
-                                forget_ids[offset : offset + chunk_size]
-                            )
-                        )
-                    )
-
-            # Re-fetch server from DB so we can update load and state values
+            # Refetch server entity for update
             server = (
-                await session.execute(model.Server.select(id=server_id))
+                await session.execute(
+                    model.Server.select(id=server_id).with_for_update()
+                )
             ).scalar_one()
-
             old_health = server.health
 
+            # Update health, load and stats
             if success:
+                server.mark_success(self.minsuccess)
                 server.load = server_load
                 server.stats = server_stats
-                server.mark_success(self.minsuccess)
             else:
                 server.mark_error(self.maxerror)
+                if server.health is model.ServerHealth.OFFLINE:
+                    server.load = 0
+                    server.stats = model.ServerStats()
 
-            # Log state changes as warnings, even positive ones.
-            if server.health is model.ServerHealth.AVAILABLE:
-                if old_health is not model.ServerHealth.AVAILABLE:
-                    LOG.warning(
-                        f"[{server.domain}] Server recovered and is now AVAILABLE."
-                    )
-            elif server.health is model.ServerHealth.UNSTABLE:
-                if success:
-                    LOG.warning(
-                        f"[{server.domain}] Server is UNSTABLE but recovering."
-                        f" Successfull polls: {server.recover}/{self.minsuccess}"
-                    )
-                else:
-                    LOG.warning(
-                        f"[{server.domain}] Server is UNSTABLE and still failing."
-                        f" Failed polls: {server.errors}/{self.maxerror}"
-                    )
-            elif server.health is model.ServerHealth.OFFLINE:
-                if old_health is not model.ServerHealth.OFFLINE:
-                    LOG.warning(
-                        f"[{server.domain}] Server failed too often and is now marked as OFFLINE."
-                    )
+            # Log state changes
+            self._log_poll_result(server, success, old_health)
 
-            LOG.debug(
-                f"[{server.domain}] {server.health.name}"
-                f" enabled={server.enabled}"
-                f" meetings={server_stats.meetings}"
-                f" users={server_stats.users}"
-                f" load={server_load:.1f}"
-            )
+            # Store collected meeting stats
+            if meeting_stats:
+                session.add_all(meeting_stats.values())
+
+            # Cleanup ended meetings
+            if success or server.health == model.ServerHealth.OFFLINE:
+                missing_ids = [
+                    meeting.id
+                    for meeting in meetings.values()
+                    if meeting.internal_id not in running_ids
+                ]
+                if missing_ids:
+                    LOG.debug(
+                        f"[{server.domain}] Removing {len(missing_ids)}"
+                        " meetings from database."
+                    )
+                    await self._mass_forget(session, missing_ids)
 
             await session.commit()
 
@@ -283,3 +268,46 @@ class MeetingPoller(BackgroundService):
             result = await conn.execute(stmt)
             if result.rowcount > 0:
                 LOG.debug(f"Cleaned up {result.rowcount} meeting_stats entries")
+
+    async def _mass_forget(
+        self, session: model.AsyncSession, ids: list[int], chunk_size=100
+    ):
+        for offset in range(0, len(ids), chunk_size):
+            await session.execute(
+                model.Meeting.delete(
+                    model.Meeting.id.in_(ids[offset : offset + chunk_size])
+                )
+            )
+
+    def _log_poll_result(
+        self, server: model.Server, success: bool, old_health: model.ServerHealth
+    ):
+
+        # Log state changes as warnings, even positive ones.
+        if server.health is model.ServerHealth.AVAILABLE:
+            if old_health is not model.ServerHealth.AVAILABLE:
+                LOG.warning(f"[{server.domain}] Server recovered and is now AVAILABLE.")
+        elif server.health is model.ServerHealth.UNSTABLE:
+            if success:
+                LOG.warning(
+                    f"[{server.domain}] Server is UNSTABLE but recovering."
+                    f" Successfull polls: {server.recover}/{self.minsuccess}"
+                )
+            else:
+                LOG.warning(
+                    f"[{server.domain}] Server is UNSTABLE and still failing."
+                    f" Failed polls: {server.errors}/{self.maxerror}"
+                )
+        elif server.health is model.ServerHealth.OFFLINE:
+            if old_health is not model.ServerHealth.OFFLINE:
+                LOG.warning(
+                    f"[{server.domain}] Server failed too often and is now marked as OFFLINE."
+                )
+
+        LOG.debug(
+            f"[{server.domain}] {server.health.name}"
+            f" enabled={server.enabled}"
+            f" meetings={server.stats.meetings}"
+            f" users={server.stats.users}"
+            f" load={server.load:.1f}"
+        )

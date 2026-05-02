@@ -370,6 +370,13 @@ class ServerStats:
     voice = 0
     largest = 0
 
+    def count_meeting(self, users: int, video: int, voice: int):
+        self.meetings += 1
+        self.users += users
+        self.video += video
+        self.voice += voice
+        self.largest = max(self.largest, users)
+
 
 class Server(Base):
     __tablename__ = "servers"
