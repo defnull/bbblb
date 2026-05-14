@@ -39,6 +39,7 @@ class BBBHelper(BackgroundService):
             if self.is_worker:
                 await self._cleanup_old_callbacks()
                 await self._cleanup_stale_meetings()
+                await self._cleanup_old_meeting_stats()
             await asyncio.sleep(600)
 
     async def _cleanup_old_callbacks(self, max_age=timedelta(days=30)):
@@ -78,6 +79,21 @@ class BBBHelper(BackgroundService):
             if result.rowcount > 0:
                 LOG.debug(f"Cleaned up {result.rowcount} stale meetings")
             return result.rowcount
+
+    async def _cleanup_old_meeting_stats(self):
+        if not self.config.POLL_STATS:
+            return
+        if self.config.POLL_STATS_DAYS <= 0:
+            return
+
+        max_age = timedelta(days=self.config.POLL_STATS_DAYS)
+        async with self.db.connect() as conn:
+            stmt = model.MeetingStats.delete(
+                model.MeetingStats.ts < (model.utcnow() - max_age)
+            )
+            result = await conn.execute(stmt)
+            if result.rowcount > 0:
+                LOG.debug(f"Cleaned up {result.rowcount} meeting_stats entries")
 
     def make_http_client(self) -> aiohttp.ClientSession:
         return aiohttp.ClientSession(connector=self.connector, connector_owner=False)
