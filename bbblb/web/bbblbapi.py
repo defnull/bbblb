@@ -11,7 +11,6 @@ import jwt
 
 from bbblb.services.analytics import AnalyticsHandler
 from bbblb.services.bbb import JWT_ALGORITHMS
-from bbblb.web import bbbapi
 from bbblb import model, utils
 
 from starlette.requests import Request
@@ -228,7 +227,7 @@ async def handle_callback_end(ctx: BBBLBApiRequest):
         meeting = (await ctx.session.execute(stmt)).scalar_one_or_none()
         if meeting:
             LOG.info(f"Meeting ended (callback): {meeting}")
-            await bbbapi.forget_meeting(ctx.session, meeting)
+            await ctx.bbb.forget_meeting(meeting)
 
     return Response("OK", 200)
 

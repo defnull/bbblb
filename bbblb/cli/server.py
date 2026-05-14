@@ -200,9 +200,9 @@ async def _end_meeting(obj: ServiceRegistry, meeting: model.Meeting):
     server = await meeting.awaitable_attrs.server
     tenant = await meeting.awaitable_attrs.tenant
     scoped_id = utils.add_scope(meeting.external_id, tenant.name)
-    bbb = (await obj.use(BBBHelper)).connect(meeting.server.api_base, server.secret)
+    async with (await obj.use(BBBHelper)).connect(server) as bbb:
+        result = await bbb.action("end", {"meetingID": scoped_id})
 
-    result = await bbb.action("end", {"meetingID": scoped_id})
     if result.success:
         click.echo(f"Ended meeting {meeting.external_id} ({meeting.tenant.name})")
     else:

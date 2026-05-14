@@ -62,6 +62,13 @@ T = typing.TypeVar("T")
 R = typing.TypeVar("R")
 
 
+async def aingore_errors(callable, *a, **ka):
+    try:
+        await callable(*a, **ka)
+    except BaseException:
+        pass
+
+
 def checked_cast(type_: type[T], value: typing.Any) -> T:
     if isinstance(value, type_):
         return value

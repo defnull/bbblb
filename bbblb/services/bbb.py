@@ -15,9 +15,10 @@ import typing
 import aiohttp
 import jwt
 
+from bbblb.utils import aingore_errors
+
 
 LOG = logging.getLogger(__name__)
-
 
 JWT_ALGORITHMS = ["HS256", "HS384", "HS512"]
 
@@ -29,11 +30,6 @@ class BBBHelper(BackgroundService):
         self.connector = aiohttp.TCPConnector(limit_per_host=10)
         self.is_worker = config.WORKER
 
-    async def on_shutdown(self):
-        if self.connector and not self.connector.closed:
-            await self.connector.close()
-        await super().on_shutdown()
-
     async def run(self):
         while True:
             if self.is_worker:
@@ -41,6 +37,10 @@ class BBBHelper(BackgroundService):
                 await self._cleanup_stale_meetings()
                 await self._cleanup_old_meeting_stats()
             await asyncio.sleep(600)
+
+    async def on_shutdown(self):
+        await aingore_errors(self.connector.close)
+        await super().on_shutdown()
 
     async def _cleanup_old_callbacks(self, max_age=timedelta(days=30)):
         """Clean up old callbacks.
@@ -81,6 +81,10 @@ class BBBHelper(BackgroundService):
             return result.rowcount
 
     async def _cleanup_old_meeting_stats(self):
+        """Clean up old meeting stats.
+
+        The MeetingStats table can grow quite fast, so we remove all
+        entries older than POLL_STATS_DAYS."""
         if not self.config.POLL_STATS:
             return
         if self.config.POLL_STATS_DAYS <= 0:
@@ -98,8 +102,26 @@ class BBBHelper(BackgroundService):
     def make_http_client(self) -> aiohttp.ClientSession:
         return aiohttp.ClientSession(connector=self.connector, connector_owner=False)
 
-    def connect(self, server, secret) -> BBBClient:
-        return BBBClient(server, secret, session=self.make_http_client())
+    def connect(self, server: model.Server) -> BBBClient:
+        return BBBClient(
+            server.api_base, server.secret, session=self.make_http_client()
+        )
+
+    async def forget_meeting(self, meeting: model.Meeting):
+        async with self.db.connect() as conn:
+            await conn.execute(model.Meeting.delete(model.Meeting.id == meeting.id))
+
+    async def forget_meetings(self, meetings: list[model.Meeting], chunk_size=100):
+        """Mass-forget a potentially large number of meetings"""
+        async with self.db.connect() as conn:
+            for offset in range(0, len(meetings), chunk_size):
+                await conn.execute(
+                    model.Meeting.delete(
+                        model.Meeting.id.in_(
+                            [m.id for m in meetings[offset : offset + chunk_size]]
+                        )
+                    )
+                )
 
     async def _trigger_callback(
         self,

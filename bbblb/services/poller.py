@@ -118,7 +118,7 @@ class MeetingPoller(BackgroundService):
         meeting_stats: dict[int, model.MeetingStats] = {}
         success = True
         try:
-            async with self.bbb.connect(server.api_base, server.secret) as client:
+            async with self.bbb.connect(server) as client:
                 result = await client.action("getMeetings", timeout=self.timeout)
                 result.raise_on_error()
 
@@ -212,21 +212,19 @@ class MeetingPoller(BackgroundService):
             if meeting_stats:
                 session.add_all(meeting_stats.values())
 
-            # Cleanup ended meetings
-            if success or server.health == model.ServerHealth.OFFLINE:
-                missing_ids = [
-                    meeting.id
-                    for meeting in meetings.values()
-                    if meeting.internal_id not in running_ids
-                ]
-                if missing_ids:
-                    LOG.debug(
-                        f"[{server.domain}] Removing {len(missing_ids)}"
-                        " meetings from database."
-                    )
-                    await self._mass_forget(session, missing_ids)
-
             await session.commit()
+
+        # Cleanup ended meetings
+        if success or server.health == model.ServerHealth.OFFLINE:
+            ended = [
+                m for m in meetings.values() if m.internal_id not in running_ids
+            ]
+            if ended:
+                LOG.debug(
+                    f"[{server.domain}] Removing {len(ended)}"
+                    " meetings from database."
+                )
+                await self.bbb.forget_meetings(ended)
 
     def get_meeting_load(self, users=2, voice=2, video=2, age=0.0, size_hint=0):
         config = self.config
@@ -250,16 +248,6 @@ class MeetingPoller(BackgroundService):
             load += ghosts * 0.1 * config.LOAD_VIDEO
 
         return load
-
-    async def _mass_forget(
-        self, session: model.AsyncSession, ids: list[int], chunk_size=100
-    ):
-        for offset in range(0, len(ids), chunk_size):
-            await session.execute(
-                model.Meeting.delete(
-                    model.Meeting.id.in_(ids[offset : offset + chunk_size])
-                )
-            )
 
     def _log_poll_result(
         self, server: model.Server, success: bool, old_health: model.ServerHealth

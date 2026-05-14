@@ -206,13 +206,6 @@ async def handle_index(ctx: BBBApiRequest):
 ##
 
 
-async def forget_meeting(session: model.AsyncSession, meeting: model.Meeting):
-    """Forget about a meeting and assume it does not exist (anymore)"""
-    # TODO: We may want to re-calculate server load here?
-    # Do not fire callbacks, they were already triggered by handle_bbblb_callback
-    await session.delete(meeting)
-
-
 async def _intercept_callbacks(
     cxt: BBBApiRequest, params: dict[str, str], meeting: model.Meeting, is_new: bool
 ):
@@ -372,9 +365,7 @@ async def handle_create(ctx: BBBApiRequest):
         if ctype == "application/xml":
             body = await ctx.read_body()
 
-        async with ctx.bbb.connect(
-            meeting.server.api_base, meeting.server.secret
-        ) as bbb:
+        async with ctx.bbb.connect(meeting.server) as bbb:
             upstream = await bbb.action("create", params, body=body, content_type=ctype)
             upstream.raise_on_error()
 
@@ -396,9 +387,10 @@ async def handle_create(ctx: BBBApiRequest):
     except BaseException:
         if meeting_created:
             LOG.exception(f"Failed to create {meeting} on {meeting.server}")
+            # Remove all entities we just created
             for cb in callbacks:
                 await ctx.session.delete(cb)
-            await forget_meeting(ctx.session, meeting)
+            await ctx.session.delete(meeting)
             await ctx.session.commit()
         raise
 
@@ -422,7 +414,7 @@ async def handle_join(ctx: BBBApiRequest):
 
     await ctx.session.close()  # Give connection back to pool
 
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         params["meetingID"] = scoped_id
         redirect_uri = bbb.encode_uri("join", params)
         return RedirectResponse(redirect_uri)
@@ -437,12 +429,12 @@ async def handle_end(ctx: BBBApiRequest):
         scoped_id = utils.add_scope(unscoped_id, tenant.name)
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
-        # Always end the meeting if requested
-        await forget_meeting(ctx.session, meeting)
-        await ctx.session.commit()
+
+    # Always forget the meeting if requested
+    await ctx.bbb.forget_meeting(meeting)
 
     # Now try to actually end it in the backend.
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         params["meetingID"] = scoped_id
         upstream = await bbb.action("end", params)
 
@@ -461,14 +453,12 @@ async def handle_send_chat_message(ctx: BBBApiRequest):
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
 
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         params["meetingID"] = scoped_id
         upstream = await bbb.action("sendChatMessage", params)
 
     if upstream.error == "notFound":
-        async with ctx.session:
-            await forget_meeting(ctx.session, meeting)
-            await ctx.session.commit()
+        await ctx.bbb.forget_meeting(meeting)
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
@@ -497,7 +487,7 @@ async def handle_insert_document(ctx: BBBApiRequest):
     ctype = ctx.request.headers.get("Content-Type")
     stream = ctx.request.stream()
 
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         upstream = await bbb.action(
             "insertDocument", params, body=stream, content_type=ctype, expect_json=True
         )
@@ -526,7 +516,7 @@ async def handle_is_meeting_running(ctx: BBBApiRequest):
 
         server = await meeting.awaitable_attrs.server
 
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         params["meetingID"] = scoped_id
         upstream = await bbb.action("isMeetingRunning", params)
 
@@ -558,7 +548,7 @@ async def handle_get_meetings(ctx: BBBApiRequest):
     tasks: list[typing.Awaitable[BBBResponse]] = []
 
     async def fetch_meetings(server):
-        async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+        async with ctx.bbb.connect(server) as bbb:
             return await bbb.action("getMeetings", params)
 
     for server in servers:
@@ -585,7 +575,7 @@ async def handle_get_meetings(ctx: BBBApiRequest):
 
 @api("getMeetingInfo")
 async def handle_get_meeting_info(ctx: BBBApiRequest):
-    async with ctx.session as session:
+    async with ctx.session:
         tenant = await ctx.require_tenant()
         params = await ctx.require_bbb_query()
         unscoped_id = await ctx.require_param("meetingID")
@@ -593,14 +583,12 @@ async def handle_get_meeting_info(ctx: BBBApiRequest):
         meeting = await ctx.require_meeting()
         server = await meeting.awaitable_attrs.server
 
-    async with ctx.bbb.connect(server.api_base, server.secret) as bbb:
+    async with ctx.bbb.connect(server) as bbb:
         params["meetingID"] = scoped_id
         upstream = await bbb.action("getMeetingInfo", params)
 
     if upstream.error == "notFound":
-        async with ctx.session as session:
-            await forget_meeting(session, meeting)
-            await session.commit()
+        await ctx.bbb.forget_meeting(meeting)
 
     xml_fix_meeting_id(upstream.xml, scoped_id, unscoped_id)
     return upstream
