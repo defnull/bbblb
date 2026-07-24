@@ -364,11 +364,11 @@ class ServerHealth(enum.Enum):
 
 @dataclasses.dataclass
 class ServerStats:
-    meetings = 0
-    users = 0
-    video = 0
-    voice = 0
-    largest = 0
+    meetings: int = 0
+    users: int = 0
+    video: int = 0
+    voice: int = 0
+    largest: int = 0
 
     def count_meeting(self, users: int, video: int, voice: int):
         self.meetings += 1
