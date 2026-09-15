@@ -854,7 +854,7 @@ class ConsistencyChecker:
             # All DB entries that were not found on disk are orphans
             if known_records - found_records:
                 orphans = list(known_records - found_records)
-                stmt = model.Recording.select(model.Recording.id.in_(orphans))
+                stmt = model.Recording.select(model.Recording.record_id.in_(orphans))
                 async for record in await session.stream_scalars(stmt):
                     await self._fix_orphan(session, record)
 
