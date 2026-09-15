@@ -533,13 +533,7 @@ async def handle_get_meetings(ctx: BBBApiRequest):
         tenant = await ctx.require_tenant()
         params = await ctx.require_bbb_query()
         # Find all servers that currently may have matching meetings
-        stmt = model.Server.select(
-            model.Server.id.in_(
-                model.Meeting.select(model.Meeting.server_fk).where(
-                    model.Meeting.tenant == tenant
-                )
-            )
-        )
+        stmt = model.Server.select(model.Server.meetings.any(model.Meeting.tenant == tenant))
         servers = (await session.execute(stmt)).scalars().all()
 
     result_xml = typing.cast(Element, XML.response(XML.returncode("SUCCESS")))
