@@ -630,7 +630,7 @@ async def handle_get_recordings(ctx: BBBApiRequest):
         stmt = stmt.where(model.Recording.state.in_(state[:5]))
     if meta:
         for key, value in meta.items():
-            stmt = stmt.where(model.Recording.meta[key].as_text() == value)
+            stmt = stmt.where(model.Recording.meta[key].as_string() == value)
     if 0 < offset < 10000:
         stmt = stmt.offset(offset)
     if 0 < limit < ctx.config.MAX_ITEMS:
