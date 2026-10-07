@@ -70,9 +70,7 @@ def verify_prt_cookie(value: str, record_id: str, conf: BBBLBConfig):
     expire, _, rid = payload.partition(":")
     if rid != record_id or not expire.isdecimal():
         return False
-    if int(expire) < time.time():
-        return False
-    return True
+    return int(expire) >= time.time()
 
 
 def _make_redirect(format):
