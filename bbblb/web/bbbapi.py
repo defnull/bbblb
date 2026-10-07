@@ -28,7 +28,7 @@ from bbblb.lib.bbb import (
 )
 from bbblb import model
 from bbblb.services.tenants import TenantCache
-from bbblb.web import ApiRequestContext
+from bbblb.web import ApiRequestContext, RequestBodyTooLarge
 from bbblb.utils import hmac_sign
 
 LOG = logging.getLogger(__name__)
@@ -44,6 +44,8 @@ def api(action: str, methods=["GET", "POST"]):
             try:
                 async with BBBApiRequest(request) as ctx:
                     out = await func(ctx)
+            except RequestBodyTooLarge:
+                out = make_error("clientError", "Request body too large", 413)
             except BBBError as err:
                 out = err
             except Exception as err:
@@ -91,7 +93,6 @@ class BBBApiRequest(ApiRequestContext):
     _tenant: model.Tenant | None = None
     _meeting: model.Meeting | None = None
     _query: dict[str, str] | None = None
-    _body: bytearray | None = None
 
     async def require_tenant(self):
         if self._tenant:
@@ -147,28 +148,10 @@ class BBBApiRequest(ApiRequestContext):
             and self.request.headers.get("Content-Type")
             == "application/x-www-form-urlencoded"
         ):
-            try:
-                query_str = (await self.read_body()).decode("UTF-8")
-            except BBBError:
-                # Unable to read enough to make a check, so technicalls this is a checksumError
-                raise make_error(
-                    "checksumError", "Request body too large, could not verify checksum"
-                )
+            query_str = (await self.read_body()).decode("UTF-8")
 
         query, _ = verify_checksum_query(action, query_str, [tenant.secret])
         return query
-
-    async def read_body(self) -> bytes:
-        """Read the request body in a save (limited size) way"""
-        if self._body is not None:
-            return self._body
-        body = bytearray()
-        async for chunk in self.request.stream():
-            body += chunk
-            if len(body) > self.config.MAX_BODY:
-                raise make_error("clientError", "Request body too large", 413)
-        self._body = body
-        return self._body
 
     async def require_param(
         self,

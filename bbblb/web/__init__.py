@@ -18,6 +18,10 @@ from bbblb.settings import BBBLBConfig
 import bbblb.services
 
 
+class RequestBodyTooLarge(Exception):
+    """Raised when a streamed request body exceeds the configured limit."""
+
+
 class ApiRequestContext:
     """A wrapper for requests that gives convenient access to importand
     BBBLB services."""
@@ -58,6 +62,21 @@ class ApiRequestContext:
         end any transactions and free any DB handles mid-request.
         """
         return self.db.session()
+
+    async def read_body(self) -> bytes:
+        """Read and cache the request body, enforcing the configured size limit."""
+        cached: bytes | None = getattr(self, "_body", None)
+        if cached is not None:
+            return cached
+
+        body = bytearray()
+        async for chunk in self.request.stream():
+            body.extend(chunk)
+            if len(body) > self.config.MAX_BODY:
+                raise RequestBodyTooLarge
+
+        self._body = bytes(body)
+        return self._body
 
 
 def redirect(src, dst):
