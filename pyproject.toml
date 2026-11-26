@@ -17,6 +17,7 @@ dependencies = [
     "alembic>=1.18.4",
     "asyncpg>=0.31.0",
     "click>=8.3.2",
+    "jinja2>=3.1.6",
     "lxml>=6.0.3",
     "psycopg[binary]>=3.3.3",
     "pyjwt>=2.12.1",

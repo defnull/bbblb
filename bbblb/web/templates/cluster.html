@@ -1,0 +1,24 @@
+{# Copyright (C) 2025, 2026 Marcel Hellkamp #}
+{# SPDX-License-Identifier: AGPL-3.0-or-later #}
+{% extends "base.html" %}
+
+{% block title %}BBBLB - Cluster{% endblock %}
+
+{% block content %}
+<h1>Cluster Overview</h1>
+
+<div class="toolbar">
+  <p class="muted">Current health and load of BigBlueButton backends.</p>
+  <label>
+    <input type="checkbox"
+           hx-get="/bbblb/admin/cluster/table"
+           hx-trigger="change[this.checked], every 5s [this.checked]"
+           hx-target="#cluster-table"
+           hx-swap="outerHTML"
+           hx-sync="body:drop">
+    Auto-refresh every 5s
+  </label>
+</div>
+
+{% include "_cluster_table.html" %}
+{% endblock %}

@@ -2,34 +2,35 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 import asyncio
-from datetime import timedelta
 import functools
+import logging
 import typing
 import uuid
+from datetime import timedelta
+
 import lxml.etree
-import logging
 import sqlalchemy
 import sqlalchemy.orm
+from starlette.responses import JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
-from starlette.responses import Response, RedirectResponse, JSONResponse
+
 import bbblb
-from bbblb import utils
-from bbblb.services.poller import MeetingPoller
-from bbblb.services.recording import RecordingManager, playback_to_xml
+from bbblb import model, utils
 from bbblb.lib.bbb import (
-    BBBResponse,
+    XML,
     BBBError,
-    ETree,
+    BBBResponse,
     Element,
+    ETree,
     SubElement,
     make_error,
-    XML,
     verify_checksum_query,
 )
-from bbblb import model
+from bbblb.services.poller import MeetingPoller
+from bbblb.services.recording import RecordingManager, playback_to_xml
 from bbblb.services.tenants import TenantCache
-from bbblb.web import ApiRequestContext, RequestBodyTooLarge
 from bbblb.utils import hmac_sign
+from bbblb.web import ApiRequestContext, RequestBodyTooLarge
 
 LOG = logging.getLogger(__name__)
 R = typing.TypeVar("R")
@@ -516,7 +517,9 @@ async def handle_get_meetings(ctx: BBBApiRequest):
         tenant = await ctx.require_tenant()
         params = await ctx.require_bbb_query()
         # Find all servers that currently may have matching meetings
-        stmt = model.Server.select(model.Server.meetings.any(model.Meeting.tenant == tenant))
+        stmt = model.Server.select(
+            model.Server.meetings.any(model.Meeting.tenant == tenant)
+        )
         servers = (await session.execute(stmt)).scalars().all()
 
     result_xml = typing.cast(Element, XML.response(XML.returncode("SUCCESS")))

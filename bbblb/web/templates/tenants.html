@@ -1,0 +1,35 @@
+{# Copyright (C) 2025, 2026  Marcel Hellkamp #}
+{# SPDX-License-Identifier: AGPL-3.0-or-later #}
+{% extends "base.html" %}
+
+{% block title %}BBBLB - Tenants{% endblock %}
+
+{% block content %}
+  <h1>Tenants</h1>
+  <p class="muted">Tenant configuration, resource usage and status.</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Tenant</th>
+          <th scope="col">Enabled</th>
+          <th scope="col">Realm</th>
+          <th scope="col">Meetings</th>
+          <th scope="col">Recordings</th>
+          <th scope="col">Recording time (hours)</th>
+          {% if ctx.is_admin %}
+          <th scope="col">Actions</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for tenant in tenants %}
+        {% include "_tenant_row.html" %}
+        {% else %}
+        <tr><td colspan="7" class="muted">No tenants are configured.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

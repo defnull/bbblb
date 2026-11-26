@@ -101,7 +101,7 @@ class BaseConfig:
     def get_missing(self):
         return set(self._options) - set(self.__dict__)
 
-    def ensure_complete(self):
+    def verify(self):
         missing = self.get_missing()
         if missing:
             raise ConfigError(
@@ -166,6 +166,17 @@ class BBBLBConfig(BaseConfig):
     SECRET: str
     """ Secret used to sign and verify API credentials and protected callbacks.
     This is NOT your BBB API secret. """
+
+    ADMIN_ENABLED: bool = False
+    """ Enable the admin  web interface. """
+
+    ADMIN_PASSWORD: str | None = None
+    """ Password for the global `??admin`` account. Required when
+    ``ADMIN_ENABLED`` is true. This is independent from ``SECRET``. """
+
+    ADMIN_ALLOW_TENANTS: bool = False
+    """ Allow tenants to use their name and secret to log into the admin
+    web interface with limited capabilities. """
 
     DB: str = "sqlite:////usr/share/bbblb/sqlite.db"
     """ An sqlalchemy compatible database connection string, starting with either
@@ -322,10 +333,15 @@ class BBBLBConfig(BaseConfig):
     """ Internal. Set to False to disable certain background tasks (e.g.
     recording importer, server health checks, ...). """
 
+    def verify(self):
+        super().verify()
+        if self.ADMIN_ENABLED and not self.ADMIN_PASSWORD:
+            raise ConfigError("ADMIN_PASSWORD is required when ADMIN_ENABLED is true")
+
     def populate(self, verify=True, strict=True):
         cfile = os.environ.get("BBBLB_CONFIG", None)
         if cfile:
             self.load_file(Path(cfile), remove_prefix="BBBLB_", strict=strict)
         self.load_env("BBBLB_", strict=strict)
         if verify:
-            self.ensure_complete()
+            self.verify()

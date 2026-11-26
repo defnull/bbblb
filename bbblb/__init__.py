@@ -10,3 +10,5 @@ VERSION[-1], _, BUILD = VERSION[-1].partition("-")
 ROOT_LOGGER = logging.getLogger(__name__)
 
 BRANDING = "BBBLB (AGPL-3, https://github.com/defnull/bbblb)"
+LICENSE = "AGPL-3.0-or-later"
+SOURCE_URL = "https://github.com/defnull/bbblb"

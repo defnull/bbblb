@@ -1,0 +1,34 @@
+      <tr>
+        <td>{{ server.domain }}</td>
+        <td>{{ "✅" if server.enabled else "❌" }}</td>
+        <td>
+          {% if server.health.name == "UNSTABLE" and server.recover > 0 %}
+          <span class="status status-{{ server.health.name|lower }}">Recovering {{ server.recover }}/{{ ctx.config.POLL_RECOVER }}</span>
+          {% elif server.health.name == "UNSTABLE" and server.errors > 0 %}
+          <span class="status status-{{ server.health.name|lower }}">Failing {{ server.errors }}/{{ ctx.config.POLL_FAIL }}</span>
+          {% else %}
+          <span class="status status-{{ server.health.name|lower }}">{{ server.health.name|title }}</span>
+          {% endif %}
+        </td>
+        <td><a href="/bbblb/admin/meetings?server={{ server.domain|urlencode }}">{{ server.stats.meetings }}</a></td>
+        <td>{{ server.stats.users }}</td>
+        <td>{{ server.stats.voice }}</td>
+        <td>{{ server.stats.video }}</td>
+        <td>{{ server.stats.largest }}</td>
+        <td>{{ "%.1f"|format(server.load) }}</td>
+        {% if ctx.is_admin %}
+        <td>
+          <form method="post" action="/bbblb/admin/server"
+                hx-post="/bbblb/admin/server"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                hx-disabled-elt="find button"
+                hx-sync="body:replace">
+            <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
+            <input type="hidden" name="domain" value="{{ server.domain }}">
+            <input type="hidden" name="action" value="{{ "disable" if server.enabled else "enable" }}">
+            <button type="submit">{{ "Disable" if server.enabled else "Enable" }}</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>

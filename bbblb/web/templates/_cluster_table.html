@@ -1,0 +1,31 @@
+<div class="table-wrap" id="cluster-table">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Backend server</th>
+        <th scope="col">Enabled</th>
+        <th scope="col">Health</th>
+        <th scope="col">Meetings</th>
+        <th scope="col">Users</th>
+        <th scope="col">Voice</th>
+        <th scope="col">Video</th>
+        <th scope="col">Largest meeting</th>
+        <th scope="col">Load</th>
+        {% if ctx.is_admin %}
+        <th scope="col">Actions</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for server in servers %}
+      {% include "_server_row.html" %}
+      {% else %}
+      <tr>
+        <td colspan="{{ 10 if ctx.is_admin else 9 }}" class="muted">
+          No backend servers are configured.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -93,7 +93,18 @@ async def collect_routes(sr: ServiceRegistry):
     static_dir = config.PATH_DATA / "htdocs"
     static_dir.mkdir(parents=True, exist_ok=True)
 
+    admin_routes = []
+    if config.ADMIN_ENABLED:
+        from bbblb.web import admin
+
+        admin_routes = [
+            redirect("/bbblb/admin", "/bbblb/admin/cluster"),
+            redirect("/bbblb/admin/", "/bbblb/admin/cluster"),
+            Mount("/bbblb/admin", routes=admin.admin_routes, name="admin"),
+        ]
+
     return [
+        *admin_routes,
         Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
         Mount("/bbblb/api", routes=bbblbapi.api_routes),
         Mount(

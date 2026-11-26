@@ -1,0 +1,42 @@
+{# Copyright (C) 2025, 2026 Marcel Hellkamp #}
+{# SPDX-License-Identifier: AGPL-3.0-or-later #}
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}BBBLB Admin{% endblock %}</title>
+  <link rel="stylesheet" href="/bbblb/common.css">
+  <!-- Vendored htmx 2.0.11 (0BSD) -->
+  <script src="/bbblb/htmx.min.js" defer></script>
+  <script src="/bbblb/admin.js" defer></script>
+</head>
+
+<body>
+  <header>
+    <a href="/bbblb/admin/cluster">BBBLB Admin</a>
+    {% if ctx.is_admin or ctx.tenant %}
+    <nav aria-label="Admin navigation">
+      <a href="/bbblb/admin/cluster">Cluster</a>
+      {% if ctx.is_admin %}
+      <a href="/bbblb/admin/tenants">Tenants</a>
+      {% endif %}
+      <a href="/bbblb/admin/meetings">Meetings</a>
+    </nav>
+    <form class="logout-form" action="/bbblb/admin/logout" method="post">
+      <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
+      <button type="submit">Log out</button>
+    </form>
+    {% endif %}
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <span><a href="{{source_url}}">BBBLB v{{version}}</a></span>
+    <span>{{license}}</span>
+  </footer>
+</body>
+
+</html>

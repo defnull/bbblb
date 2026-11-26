@@ -1,0 +1,48 @@
+{# Copyright (C) 2025, 2026  Marcel Hellkamp #}
+{# SPDX-License-Identifier: AGPL-3.0-or-later #}
+{% extends "base.html" %}
+
+{% block title %}BBBLB - Meetings{% endblock %}
+
+{% block content %}
+  <h1>Running meetings</h1>
+  <p class="muted">
+    {% if filter_tenant and filter_domain %}
+      List of tracked meetings for tenant {{ filter_tenant }} on backend {{ filter_domain }}.
+    {% elif filter_tenant %}
+      List of tracked meetings for tenant {{ filter_tenant }}.
+    {% elif filter_domain %}
+      List of tracked meetings on backend {{ filter_domain }}.
+    {% else %}
+      List of tracked meetings for all tenants on all backends.
+    {% endif %}
+    {% if filter_tenant or filter_domain %}
+      <a href="/bbblb/admin/meetings">Clear filters</a>
+    {% endif %}
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Meeting ID</th>
+          <th scope="col">Tenant</th>
+          <th scope="col">Backend</th>
+          <th scope="col">Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for meeting in meetings %}
+        <tr>
+          <td>{{ meeting.external_id }}</td>
+          <td>{{ meeting.tenant.name }}</td>
+          <td>{{ meeting.server.domain }}</td>
+          <td><time datetime="{{ meeting.created.isoformat() }}">{{ meeting.created.strftime("%Y-%m-%d %H:%M:%S %Z") }}</time></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">No running meetings.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

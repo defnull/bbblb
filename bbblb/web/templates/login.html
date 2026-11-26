@@ -1,0 +1,23 @@
+{# Copyright (C) 2025, 2026 Marcel Hellkamp #}
+{# SPDX-License-Identifier: AGPL-3.0-or-later #}
+
+{% extends "base.html" %}
+
+{% block title %}BBBLB - Login{% endblock %}
+
+{% block content %}
+<h1>Sign in</h1>
+{% if username %}<p role="alert">Invalid username or password.</p>{% endif %}
+<form action="/bbblb/admin/login" method="post">
+  <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
+  <p>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" value="{{ username or '' }}" required>
+  </p>
+  <p>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+  </p>
+  <button type="submit">Sign in</button>
+</form>
+{% endblock %}

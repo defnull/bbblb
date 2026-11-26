@@ -16,6 +16,20 @@ to get back at bbblb from the BBB nodes.
 Secret used to sign and verify API credentials and protected callbacks.
 This is NOT your BBB API secret.
 
+``ADMIN_ENABLED`` (type: ``bool``, default: ``False``)
+
+Enable the admin  web interface.
+
+``ADMIN_PASSWORD`` (type: ``str|None``, default: ``None``)
+
+Password for the global `??admin`` account. Required when
+``ADMIN_ENABLED`` is true. This is independent from ``SECRET``.
+
+``ADMIN_ALLOW_TENANTS`` (type: ``bool``, default: ``False``)
+
+Allow tenants to use their name and secret to log into the admin
+web interface with limited capabilities.
+
 ``DB`` (type: ``str``, default: ``'sqlite:////usr/share/bbblb/sqlite.db'``)
 
 An sqlalchemy compatible database connection string, starting with either

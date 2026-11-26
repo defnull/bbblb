@@ -8,6 +8,18 @@ Before we can actually start our first meeting, we need to add *Tenants* and *Se
 
     If you followed the :doc:`docker compose based deployment <install>`, you can use the ``bbblb.sh`` wrapper to run ``bbblb`` inside the container.
 
+Web Admin Interface
+===================
+
+The optional web interface at ``/bbblb/admin`` is disabled by default. Enable it and set a dedicated admin password::
+
+    BBBLB_ADMIN_ENABLED=True
+    BBBLB_ADMIN_PASSWORD=a-secure-password
+
+The global admin account uses the username ``admin`` and the configured ``ADMIN_PASSWORD``.
+
+Tenants can also use this interface with limited functionality using their tenant name and secret. This is disabled by default though. Set ``BBBLB_ADMIN_ALLOW_TENANTS=true`` to allow tenant access to the admin web interface.
+
 Manage Tenants
 ==============
 

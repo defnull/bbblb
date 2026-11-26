@@ -293,6 +293,7 @@ async def bootstrap(config: BBBLBConfig, logging=True) -> ServiceRegistry:
     import bbblb.services.db
     import bbblb.services.bbb
     import bbblb.services.health
+    import bbblb.services.ratelimit
     import bbblb.services.tenants
 
     if logging:
@@ -314,6 +315,7 @@ async def bootstrap(config: BBBLBConfig, logging=True) -> ServiceRegistry:
     ctx.register(bbblb.services.recording.RecordingManager)
     ctx.register(bbblb.services.analytics.AnalyticsHandler)
     ctx.register(bbblb.services.tenants.TenantCache)
+    ctx.register(bbblb.services.ratelimit.LoginRateLimiter)
 
     LOG.debug("Bootstrapping completed!")
 
