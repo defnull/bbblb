@@ -193,7 +193,8 @@ class AdminRequest(ApiRequestContext):
 
     def render(self, tpl_name, **args):
         args["ctx"] = self
-        args["version"] = bbblb.__version__
+        if self.is_admin:
+            args["version"] = bbblb.__version__
         args["license"] = bbblb.LICENSE
         args["source_url"] = bbblb.SOURCE_URL
 

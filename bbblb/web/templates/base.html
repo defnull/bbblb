@@ -34,7 +34,7 @@
     {% block content %}{% endblock %}
   </main>
   <footer>
-    <span><a href="{{source_url}}">BBBLB v{{version}}</a></span>
+    <span><a href="{{source_url}}">BBBLB{% if ctx.is_admin %} v{{version}}{% endif %}</a></span>
     <span>{{license}}</span>
   </footer>
 </body>
