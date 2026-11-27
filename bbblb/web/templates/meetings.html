@@ -6,22 +6,34 @@
 
 {% block content %}
   <h1>Running meetings</h1>
-  <p class="muted">
-    {% if filter_tenant and filter_domain %}
-      List of tracked meetings for tenant {{ filter_tenant }} on backend {{ filter_domain }}.
-    {% elif filter_tenant %}
-      List of tracked meetings for tenant {{ filter_tenant }}.
-    {% elif filter_domain %}
-      List of tracked meetings on backend {{ filter_domain }}.
-    {% else %}
-      List of tracked meetings for all tenants on all backends.
-    {% endif %}
-    {% if filter_tenant or filter_domain %}
-      <a href="/bbblb/admin/meetings">Clear filters</a>
-    {% endif %}
-  </p>
+  <div class="toolbar">
+    <p class="muted">
+      {% if filter_tenant and filter_domain %}
+        List of tracked meetings for tenant {{ filter_tenant }} on backend {{ filter_domain }}.
+      {% elif filter_tenant %}
+        List of tracked meetings for tenant {{ filter_tenant }}.
+      {% elif filter_domain %}
+        List of tracked meetings on backend {{ filter_domain }}.
+      {% else %}
+        List of tracked meetings for all tenants on all backends.
+      {% endif %}
+      {% if filter_tenant or filter_domain %}
+        <a href="/bbblb/admin/meetings">Clear filters</a>
+      {% endif %}
+    </p>
+    <label>
+      <input type="checkbox"
+             hx-get="/bbblb/admin/meetings{% if filter_query %}?{{ filter_query }}{% endif %}"
+             hx-select="#meetings-table"
+             hx-trigger="change[this.checked], every 5s [this.checked]"
+             hx-target="#meetings-table"
+             hx-swap="outerHTML"
+             hx-sync="body:drop">
+      Auto-refresh every 5s
+    </label>
+  </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap" id="meetings-table">
     <table>
       <thead>
         <tr>
@@ -44,7 +56,8 @@
                   hx-post="/bbblb/admin/meeting/end"
                   hx-target="closest tr"
                   hx-swap="delete"
-                  hx-disabled-elt="find .end-meeting">
+                  hx-disabled-elt="find .end-meeting"
+                  hx-sync="body:replace">
               <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
               <input type="hidden" name="meeting_id" value="{{ meeting.id }}">
               <input type="hidden" name="server" value="{{ filter_domain or '' }}">

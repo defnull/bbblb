@@ -12,7 +12,8 @@
                   hx-post="/bbblb/admin/tenant"
                   hx-target="closest tr"
                   hx-swap="outerHTML"
-                  hx-disabled-elt="find button">
+                  hx-disabled-elt="find button"
+                  hx-sync="body:replace">
               <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
               <input type="hidden" name="name" value="{{ tenant.name }}">
               <input type="hidden" name="action" value="{{ "disable" if tenant.enabled else "enable" }}">

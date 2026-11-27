@@ -302,22 +302,14 @@ async def handle_logout(ctx: AdminRequest):
     return RedirectResponse("/bbblb/admin/login", status_code=303)
 
 
-async def _cluster_servers(ctx: AdminRequest):
-    return (
+@route("cluster", name="admin:cluster")
+async def handle_cluster(ctx: AdminRequest):
+    servers = (
         (await ctx.session.execute(model.Server.select().order_by(model.Server.domain)))
         .scalars()
         .all()
     )
-
-
-@route("cluster", name="admin:cluster")
-async def handle_cluster(ctx: AdminRequest):
-    return ctx.render("cluster.html", servers=await _cluster_servers(ctx))
-
-
-@route("cluster/table", name="admin:cluster_table")
-async def handle_cluster_table(ctx: AdminRequest):
-    return ctx.render("_cluster_table.html", servers=await _cluster_servers(ctx))
+    return ctx.render("cluster.html", servers=servers)
 
 
 async def _tenant_stats(session, tenant_ids):
@@ -368,6 +360,19 @@ async def handle_tenants(ctx: AdminRequest):
     return ctx.render("tenants.html", tenants=tenants, tenant_stats=tenant_stats)
 
 
+def _meetings_filter_query(filter_domain, filter_tenant):
+    return urlencode(
+        {
+            name: value
+            for name, value in (
+                ("server", filter_domain),
+                ("tenant", filter_tenant),
+            )
+            if value
+        }
+    )
+
+
 @route("meetings", name="admin:meetings")
 async def handle_meetings(ctx: AdminRequest):
     filter_domain = ctx.request.query_params.get("server")
@@ -401,6 +406,7 @@ async def handle_meetings(ctx: AdminRequest):
         meetings=meetings,
         filter_domain=filter_domain,
         filter_tenant=filter_tenant,
+        filter_query=_meetings_filter_query(filter_domain, filter_tenant),
     )
 
 
@@ -429,14 +435,10 @@ async def handle_meeting_end(ctx: AdminRequest):
     if ctx.is_htmx:
         return Response(status_code=200)
 
-    query = {
-        name: value
-        for name in ("server", "tenant")
-        if (value := form.get(name))
-    }
+    query = _meetings_filter_query(form.get("server"), form.get("tenant"))
     target = "/bbblb/admin/meetings"
     if query:
-        target += "?" + urlencode(query)
+        target += "?" + query
     return RedirectResponse(target, status_code=303)
 
 

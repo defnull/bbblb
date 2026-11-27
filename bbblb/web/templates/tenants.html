@@ -6,9 +6,21 @@
 
 {% block content %}
   <h1>Tenants</h1>
-  <p class="muted">Tenant configuration, resource usage and status.</p>
+  <div class="toolbar">
+    <p class="muted">Tenant configuration, resource usage and status.</p>
+    <label>
+      <input type="checkbox"
+             hx-get="/bbblb/admin/tenants"
+             hx-select="#tenants-table"
+             hx-trigger="change[this.checked], every 5s [this.checked]"
+             hx-target="#tenants-table"
+             hx-swap="outerHTML"
+             hx-sync="body:drop">
+      Auto-refresh every 5s
+    </label>
+  </div>
 
-  <div class="table-wrap">
+  <div class="table-wrap" id="tenants-table">
     <table>
       <thead>
         <tr>

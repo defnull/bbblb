@@ -11,7 +11,8 @@
   <p class="muted">Current health and load of BigBlueButton backends.</p>
   <label>
     <input type="checkbox"
-           hx-get="/bbblb/admin/cluster/table"
+           hx-get="/bbblb/admin/cluster"
+           hx-select="#cluster-table"
            hx-trigger="change[this.checked], every 5s [this.checked]"
            hx-target="#cluster-table"
            hx-swap="outerHTML"
@@ -20,5 +21,35 @@
   </label>
 </div>
 
-{% include "_cluster_table.html" %}
+<div class="table-wrap" id="cluster-table">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Backend server</th>
+        <th scope="col">Enabled</th>
+        <th scope="col">Health</th>
+        <th scope="col">Meetings</th>
+        <th scope="col">Users</th>
+        <th scope="col">Voice</th>
+        <th scope="col">Video</th>
+        <th scope="col">Largest meeting</th>
+        <th scope="col">Load</th>
+        {% if ctx.is_admin %}
+        <th scope="col">Actions</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for server in servers %}
+      {% include "_server_row.html" %}
+      {% else %}
+      <tr>
+        <td colspan="{{ 10 if ctx.is_admin else 9 }}" class="muted">
+          No backend servers are configured.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endblock %}
