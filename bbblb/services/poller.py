@@ -163,7 +163,7 @@ class MeetingPoller(BackgroundService):
                     continue
 
                 if self.config.POLL_STATS and meeting:
-                    if meeting.uuid not in meeting_stats:
+                    if meeting.id not in meeting_stats:
                         meeting_stats[meeting.id] = model.MeetingStats(
                             ts=self._poll_start,
                             uuid=meeting.uuid,
