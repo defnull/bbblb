@@ -404,6 +404,42 @@ async def handle_meetings(ctx: AdminRequest):
     )
 
 
+@route("meeting/end", methods=("POST",), name="admin:meeting_end")
+async def handle_meeting_end(ctx: AdminRequest):
+    form = await ctx.get_form()
+    meeting_id = form.get("meeting_id", "")
+    if not meeting_id.isdigit():
+        raise AdminError(400, "Invalid meeting")
+
+    async with ctx.session as session:
+        stmt = model.Meeting.select(
+            model.Meeting.id == int(meeting_id),
+            model.Meeting.internal_id.is_not(None),
+        )
+        if ctx.tenant is not None:
+            stmt = stmt.where(model.Meeting.tenant_fk == ctx.tenant.id)
+        meeting = (await session.execute(stmt)).scalar_one_or_none()
+        if meeting is None:
+            raise AdminError(404, "Meeting not found")
+
+    result = await ctx.bbb.end_meeting(meeting)
+    if not result.success:
+        raise AdminError(502, f"Failed to end meeting: {result.message}")
+
+    if ctx.is_htmx:
+        return Response(status_code=200)
+
+    query = {
+        name: value
+        for name in ("server", "tenant")
+        if (value := form.get(name))
+    }
+    target = "/bbblb/admin/meetings"
+    if query:
+        target += "?" + urlencode(query)
+    return RedirectResponse(target, status_code=303)
+
+
 @route("server", methods=("POST",), name="admin:server_update")
 async def handle_server_update(ctx: AdminRequest):
     if not ctx.is_admin:

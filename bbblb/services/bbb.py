@@ -15,7 +15,7 @@ import typing
 import aiohttp
 import jwt
 
-from bbblb.utils import aingore_errors
+from bbblb.utils import add_scope, aingore_errors
 
 
 LOG = logging.getLogger(__name__)
@@ -110,6 +110,14 @@ class BBBHelper(BackgroundService):
     async def forget_meeting(self, meeting: model.Meeting):
         async with self.db.connect() as conn:
             await conn.execute(model.Meeting.delete(model.Meeting.id == meeting.id))
+
+    async def end_meeting(self, meeting: model.Meeting):
+        server = await meeting.awaitable_attrs.server
+        tenant = await meeting.awaitable_attrs.tenant
+        scoped_id = add_scope(meeting.external_id, tenant.name)
+        await self.forget_meeting(meeting)
+        async with self.connect(server) as bbb:
+            return await bbb.action("end", {"meetingID": scoped_id})
 
     async def forget_meetings(self, meetings: list[model.Meeting], chunk_size=100):
         """Mass-forget a potentially large number of meetings"""

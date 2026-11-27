@@ -29,6 +29,7 @@
           <th scope="col">Tenant</th>
           <th scope="col">Backend</th>
           <th scope="col">Created</th>
+          <th scope="col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -38,9 +39,22 @@
           <td>{{ meeting.tenant.name }}</td>
           <td>{{ meeting.server.domain }}</td>
           <td><time datetime="{{ meeting.created.isoformat() }}">{{ meeting.created.strftime("%Y-%m-%d %H:%M:%S %Z") }}</time></td>
+          <td>
+            <form method="post" action="/bbblb/admin/meeting/end"
+                  hx-post="/bbblb/admin/meeting/end"
+                  hx-target="closest tr"
+                  hx-swap="delete"
+                  hx-disabled-elt="find .end-meeting">
+              <input type="hidden" name="csrf" value="{{ ctx.get_csrf() }}">
+              <input type="hidden" name="meeting_id" value="{{ meeting.id }}">
+              <input type="hidden" name="server" value="{{ filter_domain or '' }}">
+              <input type="hidden" name="tenant" value="{{ filter_tenant or '' }}">
+              <button class="end-meeting" type="submit">End</button>
+            </form>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="muted">No running meetings.</td></tr>
+        <tr><td colspan="5" class="muted">No running meetings.</td></tr>
         {% endfor %}
       </tbody>
     </table>
