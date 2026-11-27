@@ -8,8 +8,7 @@ import time
 from typing import Any, MutableMapping
 
 from starlette.requests import Request
-from starlette.responses import RedirectResponse, Response
-from starlette.routing import Mount
+from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
 
 from bbblb import model, utils
@@ -71,25 +70,6 @@ def verify_prt_cookie(value: str, record_id: str, conf: BBBLBConfig):
     if rid != record_id or not expire.isdecimal():
         return False
     return int(expire) >= time.time()
-
-
-def _make_redirect(format):
-    async def redirect_app(scope, receive, send):
-        assert scope["type"] == "http"
-        path = scope["path"].lstrip("/")
-        response = RedirectResponse(url=f"/playback/{format}/{path}")
-        await response(scope, receive, send)
-
-    return redirect_app
-
-
-# Some playback formats think they are served from /{format}/* instead of
-# their proper /playback/{format}/* path, so we have to add a couple of
-# redirects.
-PLAYBACK_FORMAT_REDIRECTS = [
-    Mount(f"/{format}", app=_make_redirect(format))
-    for format in ("presentation", "video")
-]
 
 
 class PlaybackPlayerApp(StaticFiles):

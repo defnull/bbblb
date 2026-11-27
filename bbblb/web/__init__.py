@@ -86,27 +86,35 @@ def redirect(src, dst):
     return Route(src, endpoint=handler)
 
 
+def redirect_prefix(prefix):
+    async def redirect_app(scope, receive, send):
+        query = scope.get("query_string", b"").decode("latin-1")
+        url = f"{prefix}{scope['path']}"
+        if query:
+            url = f"{url}?{query}"
+        response = RedirectResponse(url=url)
+        await response(scope, receive, send)
+
+    return redirect_app
+
+
 async def collect_routes(sr: ServiceRegistry):
-    from bbblb.web import bbbapi, bbblbapi, playback
+    from bbblb.web import bbbapi, bbblbapi, playback, admin
 
     config = await sr.use(BBBLBConfig)
-    static_dir = config.PATH_DATA / "htdocs"
-    static_dir.mkdir(parents=True, exist_ok=True)
 
-    admin_routes = []
-    if config.ADMIN_ENABLED:
-        from bbblb.web import admin
-
-        admin_routes = [
-            redirect("/bbblb/admin", "/bbblb/admin/cluster"),
-            redirect("/bbblb/admin/", "/bbblb/admin/cluster"),
-            Mount("/bbblb/admin", routes=admin.admin_routes, name="admin"),
-        ]
-
-    return [
-        *admin_routes,
+    # Mount API routes first, because they are triggered most often.
+    # Note: We explicitly redirect non-slash requests to prefix mounts, because automatic
+    # slash handling breaks if there are other routes matching the non-slash request :/
+    routes = [
         Mount("/bigbluebutton/api", routes=bbbapi.api_routes),
+        redirect("/bigbluebutton/api", "/bigbluebutton/api/"),
         Mount("/bbblb/api", routes=bbblbapi.api_routes),
+        redirect("/bbblb/api", "/bbblb/api/"),
+    ]
+
+    # Playback player and media routes as well as a bunch of redirects
+    routes += [
         Mount(
             "/playback/presentation/2.3/{record_id}",
             app=playback.PlaybackPlayerApp(config),
@@ -117,17 +125,29 @@ async def collect_routes(sr: ServiceRegistry):
             app=playback.PlaybackMediaApp(config, await sr.use(DBContext)),
             name="bbb:playback:media",
         ),
-        # Redirect misguided playback file requests to the real path. We send
-        # redirects instead of real files in case a reverse proxy in front if BBBLB
-        # serves /playback/* for us.
-        *playback.PLAYBACK_FORMAT_REDIRECTS,
-        # Redirect non-slash requests to prefix mounts, because automatic slash handling
-        # breaks if there are other routes matching the non-slash request :/
-        redirect("/bigbluebutton/api", "/bigbluebutton/api/"),
-        redirect("/bbblb/api", "/bbblb/api/"),
-        # Serve static files from the {PATH_DATA}/htdocs/ folder, or fall back to
-        # files shipped with BBBLB. This is just for convenience, BBBLB itself
-        # does not need any static files.
+        # Some playback formats think they are served from /{format}/* instead of
+        # their proper /playback/{format}/* path, so we have to add a couple of
+        # redirects here. We redirect instead of serving actual files in case a reverse
+        # proxy in front of BBBLB serves /playback/* files for us.
+        *[
+            Mount(f"/{format}", app=redirect_prefix("/playback"))
+            for format in ("presentation", "video")
+        ],
+    ]
+
+    # Optional admin web UI routes
+    if config.ADMIN_ENABLED:
+        routes += [
+            redirect("/bbblb/admin", "/bbblb/admin/"),
+            redirect("/bbblb/admin/", "/bbblb/admin/cluster"),
+            Mount("/bbblb/admin", routes=admin.admin_routes, name="admin"),
+        ]
+
+    # Serve static files from the {PATH_DATA}/htdocs/ folder and fall back to files
+    # shipped with BBBLB for missing files.
+    static_dir = config.PATH_DATA / "htdocs"
+    static_dir.mkdir(parents=True, exist_ok=True)
+    routes += [
         Mount(
             "/",
             app=StaticFiles(
@@ -139,6 +159,8 @@ async def collect_routes(sr: ServiceRegistry):
             name="static",
         ),
     ]
+
+    return routes
 
 
 def make_app(config: BBBLBConfig | None = None, autostart=True):
